@@ -3,8 +3,9 @@ import { MOCK_CANDIDATES } from "@/lib/mock-data";
 import { TrendCard } from "@/components/trend-card";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowUpRight, TrendingUp, Users, Activity, PlayCircle } from "lucide-react";
+import { ArrowUpRight, TrendingUp, Users, Activity, PlayCircle, Zap } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
+import { useToast } from "@/hooks/use-toast";
 
 // Mock Analytics Data
 const velocityData = [
@@ -25,17 +26,41 @@ const categoryData = [
 
 export default function Dashboard() {
   const topPicks = MOCK_CANDIDATES.filter(c => c.score > 90).slice(0, 3);
+  const { toast } = useToast();
+
+  const handleQuickScan = () => {
+    toast({
+      title: "Quick Scan Initiated",
+      description: "Scanning all configured entities for new content...",
+      duration: 3000,
+    });
+    
+    // Simulate scan completion
+    setTimeout(() => {
+      toast({
+        title: "Scan Complete",
+        description: "Found 3 new candidates. Updating metrics...",
+        duration: 3000,
+      });
+    }, 2000);
+  };
 
   return (
     <Layout>
       <div className="max-w-7xl mx-auto space-y-8">
         
         {/* Header */}
-        <div>
-          <h1 className="text-3xl font-heading font-bold mb-1">Dashboard</h1>
-          <p className="text-muted-foreground text-sm">
-            Overview of daily trends, system health, and top performing content.
-          </p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-heading font-bold mb-1">Dashboard</h1>
+            <p className="text-muted-foreground text-sm">
+              Overview of daily trends, system health, and top performing content.
+            </p>
+          </div>
+          <Button onClick={handleQuickScan} className="bg-primary text-black hover:bg-primary/90 font-medium">
+            <Zap className="w-4 h-4 mr-2" />
+            Run Quick Scan
+          </Button>
         </div>
 
         {/* Key Metrics */}
