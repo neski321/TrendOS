@@ -15,25 +15,25 @@ export function TrendCard({ candidate }: { candidate: VideoCandidate }) {
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
       <div className="flex flex-col sm:flex-row h-full">
-        {/* Image Section */}
-        <div className="relative sm:w-72 aspect-video sm:aspect-auto shrink-0 overflow-hidden">
+        {/* Image Section - Reduced height on mobile */}
+        <div className="relative h-32 sm:h-auto sm:w-72 shrink-0 overflow-hidden bg-muted">
           <img 
             src={candidate.thumbnail} 
             alt={candidate.title}
             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
           />
           <div className="absolute top-2 left-2">
-             <Badge variant="secondary" className="bg-black/80 backdrop-blur-sm text-white border-white/10 font-mono text-xs uppercase">
+             <Badge variant="secondary" className="bg-black/80 backdrop-blur-sm text-white border-white/10 font-mono text-[10px] uppercase px-1.5 py-0 h-5">
                 {candidate.category}
              </Badge>
           </div>
-          <div className="absolute bottom-2 right-2 bg-black/90 px-2 py-0.5 rounded text-[10px] font-mono text-white">
+          <div className="absolute bottom-2 right-2 bg-black/90 px-1.5 py-0.5 rounded text-[10px] font-mono text-white leading-none">
             12:45
           </div>
         </div>
 
         {/* Content Section */}
-        <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between relative">
+        <div className="p-3 sm:p-5 flex-1 flex flex-col justify-between relative min-h-[180px] sm:min-h-0">
           
           <div>
             <div className="flex justify-between items-start mb-2">
