@@ -15,8 +15,8 @@ export function TrendCard({ candidate }: { candidate: VideoCandidate }) {
       <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
       <div className="flex flex-col sm:flex-row h-full">
-        {/* Image Section - Reduced height on mobile */}
-        <div className="relative h-32 sm:h-auto sm:w-72 shrink-0 overflow-hidden bg-muted">
+        {/* Image Section - Reduced height on mobile, narrower on desktop */}
+        <div className="relative h-32 sm:h-auto sm:w-56 shrink-0 overflow-hidden bg-muted">
           <img 
             src={candidate.thumbnail} 
             alt={candidate.title}
@@ -33,7 +33,7 @@ export function TrendCard({ candidate }: { candidate: VideoCandidate }) {
         </div>
 
         {/* Content Section */}
-        <div className="p-3 sm:p-5 flex-1 flex flex-col justify-between relative min-h-[180px] sm:min-h-0">
+        <div className="p-3 sm:p-4 flex-1 flex flex-col justify-between relative min-h-[160px] sm:min-h-[180px]">
           
           <div>
             <div className="flex justify-between items-start mb-2">
