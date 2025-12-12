@@ -20,9 +20,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen flex flex-col relative overflow-hidden">
       
       {/* Top Header - Minimal & Functional */}
-      <header className="fixed top-0 left-0 right-0 h-16 border-b border-white/5 bg-background/60 backdrop-blur-xl z-50 px-6 flex items-center justify-between">
+      <header className="fixed top-0 left-0 right-0 h-16 border-b border-white/5 bg-background/60 backdrop-blur-xl z-50 px-4 md:px-6 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-[0_0_15px_rgba(157,140,255,0.3)]">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-secondary flex items-center justify-center shadow-[0_0_15px_rgba(157,140,255,0.3)] shrink-0">
             <Zap className="w-5 h-5 text-black fill-black" />
           </div>
           <div>
@@ -64,16 +64,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       </main>
 
       {/* Floating Dock Navigation - The "Engaging" Part */}
-      <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4">
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-full max-w-md px-4">
         <div className="bg-white/5 backdrop-blur-2xl border border-white/10 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.4)] p-2 flex items-center justify-between gap-1 ring-1 ring-white/5">
           {navItems.map((item) => {
             const isActive = location === item.href || (item.href !== "/" && location.startsWith(item.href));
             
             return (
-              <Link key={item.href} href={item.href}>
+              <Link key={item.href} href={item.href} className="flex-1 min-w-0">
                 <motion.div 
                   className={cn(
-                    "relative flex flex-col items-center justify-center w-20 h-16 rounded-xl cursor-pointer transition-all duration-300",
+                    "relative flex flex-col items-center justify-center h-16 rounded-xl cursor-pointer transition-all duration-300 w-full",
                     isActive ? "text-white" : "text-muted-foreground hover:text-white hover:bg-white/5"
                   )}
                   whileHover={{ scale: 1.05 }}
@@ -87,9 +87,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                       transition={{ type: "spring", stiffness: 500, damping: 30 }}
                     />
                   )}
-                  <div className="relative z-10 flex flex-col items-center gap-1.5">
-                    <item.icon className={cn("w-5 h-5 transition-colors", isActive && "text-primary drop-shadow-[0_0_8px_rgba(157,140,255,0.8)]")} />
-                    <span className="text-[10px] font-medium tracking-wide">{item.label}</span>
+                  <div className="relative z-10 flex flex-col items-center gap-1.5 overflow-hidden w-full px-1">
+                    <item.icon className={cn("w-5 h-5 transition-colors shrink-0", isActive && "text-primary drop-shadow-[0_0_8px_rgba(157,140,255,0.8)]")} />
+                    <span className="text-[10px] font-medium tracking-wide truncate w-full text-center">{item.label}</span>
                   </div>
                 </motion.div>
               </Link>

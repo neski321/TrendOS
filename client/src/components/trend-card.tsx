@@ -33,20 +33,20 @@ export function TrendCard({ candidate }: { candidate: VideoCandidate }) {
         </div>
 
         {/* Content Section */}
-        <div className="p-5 flex-1 flex flex-col justify-between relative">
+        <div className="p-4 sm:p-5 flex-1 flex flex-col justify-between relative">
           
           <div>
             <div className="flex justify-between items-start mb-2">
               <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
-                <span className="text-foreground font-semibold">{candidate.channel}</span>
+                <span className="text-foreground font-semibold truncate max-w-[100px] sm:max-w-none">{candidate.channel}</span>
                 <span>•</span>
-                <span>{formatDistanceToNow(new Date(candidate.publishedAt), { addSuffix: true })}</span>
+                <span className="shrink-0">{formatDistanceToNow(new Date(candidate.publishedAt), { addSuffix: true })}</span>
               </div>
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1 shrink-0">
                  <span className={`font-mono text-2xl font-bold ${scoreColor}`}>
                     {candidate.score}
                  </span>
-                 <span className="text-[10px] text-muted-foreground uppercase tracking-widest">Score</span>
+                 <span className="text-[10px] text-muted-foreground uppercase tracking-widest hidden xs:inline">Score</span>
               </div>
             </div>
 
@@ -54,24 +54,24 @@ export function TrendCard({ candidate }: { candidate: VideoCandidate }) {
               {candidate.title}
             </h3>
 
-            <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
                <div className="flex flex-col">
                   <span className="text-[10px] text-muted-foreground uppercase">Views</span>
-                  <span className="font-mono font-medium flex items-center gap-1">
+                  <span className="font-mono font-medium flex items-center gap-1 text-xs sm:text-sm">
                     <Eye className="w-3 h-3 text-muted-foreground" />
                     {(candidate.views / 1000).toFixed(1)}K
                   </span>
                </div>
                <div className="flex flex-col">
                   <span className="text-[10px] text-muted-foreground uppercase">Velocity</span>
-                  <span className="font-mono font-medium flex items-center gap-1 text-primary">
+                  <span className="font-mono font-medium flex items-center gap-1 text-primary text-xs sm:text-sm">
                     <Flame className="w-3 h-3" />
                     {candidate.velocity.toLocaleString()}/hr
                   </span>
                </div>
                <div className="flex flex-col">
                   <span className="text-[10px] text-muted-foreground uppercase">Entity</span>
-                  <span className="font-mono font-medium truncate" title={candidate.entity}>
+                  <span className="font-mono font-medium truncate text-xs sm:text-sm" title={candidate.entity}>
                     {candidate.entity}
                   </span>
                </div>
@@ -79,13 +79,13 @@ export function TrendCard({ candidate }: { candidate: VideoCandidate }) {
           </div>
 
           <div className="flex items-center gap-2 mt-2">
-            <Button size="sm" className="flex-1 bg-primary text-black hover:bg-primary/90 font-medium">
-              <Copy className="w-4 h-4 mr-2" /> Clip This
+            <Button size="sm" className="flex-1 bg-primary text-black hover:bg-primary/90 font-medium h-9 sm:h-9">
+              <Copy className="w-4 h-4 mr-2" /> <span className="sm:inline">Clip This</span>
             </Button>
-            <Button size="icon" variant="outline" className="shrink-0 hover:bg-muted">
+            <Button size="icon" variant="outline" className="shrink-0 hover:bg-muted h-9 w-9">
               <Share2 className="w-4 h-4" />
             </Button>
-            <Button size="icon" variant="outline" className="shrink-0 hover:bg-muted" asChild>
+            <Button size="icon" variant="outline" className="shrink-0 hover:bg-muted h-9 w-9" asChild>
                 <a href="#" target="_blank"><ArrowUpRight className="w-4 h-4" /></a>
             </Button>
           </div>
