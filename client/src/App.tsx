@@ -5,14 +5,15 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
-import Settings from "@/pages/settings";
+import Feed from "@/pages/feed";
 import Logs from "@/pages/logs";
+import Settings from "@/pages/settings";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
-      <Route path="/feed" component={Dashboard} />
+      <Route path="/feed" component={Feed} />
       <Route path="/logs" component={Logs} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />
