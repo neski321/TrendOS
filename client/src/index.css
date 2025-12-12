@@ -24,60 +24,42 @@
   --color-input: hsl(var(--input));
   --color-ring: hsl(var(--ring));
   
-  --color-sidebar: hsl(var(--sidebar));
-  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
-  --color-sidebar-primary: hsl(var(--sidebar-primary));
-  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
-  --color-sidebar-accent: hsl(var(--sidebar-accent));
-  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
-  --color-sidebar-border: hsl(var(--sidebar-border));
-  --color-sidebar-ring: hsl(var(--sidebar-ring));
-
   --font-sans: 'Inter', sans-serif;
   --font-heading: 'Space Grotesk', sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
-  --radius: 0.25rem;
+  --radius: 0.5rem;
 }
 
 :root {
-  /* Dark "Data Terminal" Theme */
-  --background: 240 10% 3.9%;   /* #09090b */
+  /* Deep Space / Cyber-Glass Theme */
+  --background: 240 10% 4%;     /* #0a0a0b */
   --foreground: 0 0% 98%;       /* #fafafa */
   
-  --card: 240 10% 6%;           /* #0e0e11 */
+  --card: 240 10% 6%;           /* #0f0f11 */
   --card-foreground: 0 0% 98%;
   
   --popover: 240 10% 6%;
   --popover-foreground: 0 0% 98%;
   
-  --primary: 150 100% 45%;      /* Neon Green #00E599 */
+  --primary: 250 100% 70%;      /* Electric Blue/Purple #9d8cff */
   --primary-foreground: 240 5.9% 10%;
   
-  --secondary: 265 89% 60%;     /* Electric Purple #7000FF */
-  --secondary-foreground: 0 0% 98%;
+  --secondary: 180 100% 50%;    /* Cyan #00ffff */
+  --secondary-foreground: 240 5.9% 10%;
   
-  --muted: 240 5% 15%;          /* #242426 */
+  --muted: 240 6% 15%;          /* #242429 */
   --muted-foreground: 240 5% 64.9%;
   
-  --accent: 240 5% 15%;         /* Dark Gray accent */
+  --accent: 240 6% 15%;
   --accent-foreground: 0 0% 98%;
   
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 0 0% 98%;
 
-  --border: 240 5% 15%;         /* #242426 */
-  --input: 240 5% 15%;
-  --ring: 150 100% 45%;
-  
-  --sidebar: 240 10% 3.9%;
-  --sidebar-foreground: 240 4.8% 95.9%;
-  --sidebar-primary: 150 100% 45%;
-  --sidebar-primary-foreground: 240 5.9% 10%;
-  --sidebar-accent: 240 3.7% 15.9%;
-  --sidebar-accent-foreground: 240 4.8% 95.9%;
-  --sidebar-border: 240 3.7% 15.9%;
-  --sidebar-ring: 150 100% 45%;
+  --border: 240 6% 15%;
+  --input: 240 6% 15%;
+  --ring: 250 100% 70%;
 }
 
 @layer base {
@@ -86,23 +68,27 @@
   }
   body {
     @apply font-sans antialiased bg-background text-foreground;
+    background-image: 
+      radial-gradient(circle at 15% 50%, rgba(157, 140, 255, 0.08), transparent 25%), 
+      radial-gradient(circle at 85% 30%, rgba(0, 255, 255, 0.05), transparent 25%);
+    background-attachment: fixed;
   }
   h1, h2, h3, h4, h5, h6 {
     @apply font-heading tracking-tight;
   }
 }
 
-/* Custom Scrollbar for Terminal Feel */
+/* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: hsl(var(--background)); 
+  background: transparent; 
 }
 ::-webkit-scrollbar-thumb {
   background: hsl(var(--border)); 
-  border-radius: 4px;
+  border-radius: 99px;
 }
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground)); 
