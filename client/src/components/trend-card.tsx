@@ -37,9 +37,9 @@ export function TrendCard({ candidate }: { candidate: VideoCandidate }) {
           
           <div>
             <div className="flex justify-between items-start mb-2">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
-                <span className="text-foreground font-semibold truncate max-w-[100px] sm:max-w-none">{candidate.channel}</span>
-                <span>•</span>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono flex-1 min-w-0 mr-2">
+                <span className="text-foreground font-semibold truncate">{candidate.channel}</span>
+                <span className="shrink-0">•</span>
                 <span className="shrink-0">{formatDistanceToNow(new Date(candidate.publishedAt), { addSuffix: true })}</span>
               </div>
               <div className="flex items-center gap-1 shrink-0">
@@ -55,22 +55,22 @@ export function TrendCard({ candidate }: { candidate: VideoCandidate }) {
             </h3>
 
             <div className="grid grid-cols-3 gap-2 sm:gap-4 mb-4">
-               <div className="flex flex-col">
-                  <span className="text-[10px] text-muted-foreground uppercase">Views</span>
-                  <span className="font-mono font-medium flex items-center gap-1 text-xs sm:text-sm">
-                    <Eye className="w-3 h-3 text-muted-foreground" />
+               <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] text-muted-foreground uppercase truncate">Views</span>
+                  <span className="font-mono font-medium flex items-center gap-1 text-xs sm:text-sm truncate">
+                    <Eye className="w-3 h-3 text-muted-foreground shrink-0" />
                     {(candidate.views / 1000).toFixed(1)}K
                   </span>
                </div>
-               <div className="flex flex-col">
-                  <span className="text-[10px] text-muted-foreground uppercase">Velocity</span>
-                  <span className="font-mono font-medium flex items-center gap-1 text-primary text-xs sm:text-sm">
-                    <Flame className="w-3 h-3" />
+               <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] text-muted-foreground uppercase truncate">Velocity</span>
+                  <span className="font-mono font-medium flex items-center gap-1 text-primary text-xs sm:text-sm truncate">
+                    <Flame className="w-3 h-3 shrink-0" />
                     {candidate.velocity.toLocaleString()}/hr
                   </span>
                </div>
-               <div className="flex flex-col">
-                  <span className="text-[10px] text-muted-foreground uppercase">Entity</span>
+               <div className="flex flex-col min-w-0">
+                  <span className="text-[10px] text-muted-foreground uppercase truncate">Entity</span>
                   <span className="font-mono font-medium truncate text-xs sm:text-sm" title={candidate.entity}>
                     {candidate.entity}
                   </span>
