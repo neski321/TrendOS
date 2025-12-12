@@ -1,0 +1,511 @@
+PROMPT: Build an Automated Trend Finder + Discord Alert System (Hip Hop / NBA / Celebrity Clips)
+
+You are an expert Python backend and automation engineer.
+Your task is to build a production-ready system that automatically discovers trending hip hop / NBA / celebrity interviews, scores them for clip-worthiness, stores the results, and sends Discord notifications with “what to clip today.”
+
+The output should be a complete, modular codebase with clear structure, comments, and setup instructions.
+1. High-Level Goal
+
+Build a Python system that, on a schedule (cron/worker):
+
+    Queries YouTube for new interview-style videos related to:
+
+        Hip hop (artists, podcasts, channels)
+
+        NBA (players, teams, media day, press conferences)
+
+        General celebrities / big podcasters
+
+    Scores each video for “clip potential” based on:
+
+        Recency
+
+        Engagement (views, likes, like/view ratio)
+
+        View velocity (views per hour)
+
+        Entity priority (big names weighted higher)
+
+    Stores the results (SQLite and optional CSV/Sheets export).
+
+    Sends a Discord message summarizing the day’s top clip targets per category.
+
+Make it config-driven, easy to extend, and deployable on Railway/Render as a scheduled job.
+2. Data Sources and Categories
+2.1 Platforms
+
+    YouTube Data API v3
+
+        Use search.list to find recent videos.
+
+        Use videos.list to get stats (views, likes, comments, duration).
+
+    Optional (Phase 3 – just prepare stubs now):
+
+        TikTok trend API / wrapper (for cross-platform signal).
+
+2.2 Categories and Entities
+
+Use a config file to define categories and entities. Example:
+
+    hip_hop:
+
+        Entities: Drake, Kendrick Lamar, Travis Scott, Future, Nicki Minaj
+
+        Channels/shows: VladTV, Drink Champs, Million Dollaz Worth of Game, No Jumper
+
+    nba:
+
+        Entities: LeBron James, Stephen Curry, Kevin Durant, Victor Wembanyama
+
+        Teams: Lakers, Warriors, Celtics
+
+        Shows: NBA, All The Smoke, House of Highlights
+
+    celebrity:
+
+        Entities: Kai Cenat, Joe Rogan, MrBeast, Andrew Tate
+
+        Shows: Impaulsive, PBD Podcast, Full Send Podcast
+
+Interview-related keywords (configurable):
+
+    ["interview", "podcast", "full episode", "conversation", "media day", "press conference", "off air"]
+
+Time window:
+
+    Only consider videos published in the last 72 hours by default (configurable).
+
+3. Project Structure
+
+Create this folder structure:
+
+text
+clip_trend_finder/
+├── main.py                  # Entry point: orchestrates pipeline
+├── config/
+│   ├── entities.yaml        # Categories, entities, channels, keywords
+│   └── settings.yaml        # Weights, limits, time windows, regions
+├── clients/
+│   ├── youtube_client.py    # YouTube API integration
+│   └── tiktok_client.py     # Stub for future TikTok integration
+├── core/
+│   ├── scorer.py            # Scoring, ranking, filtering logic
+│   └── storage.py           # SQLite + CSV/Sheet export
+├── notifiers/
+│   └── discord_notifier.py  # Discord webhook notifications
+├── utils/
+│   ├── config_loader.py     # Load and validate YAML configs
+│   └── time_utils.py        # Time / datetime helpers
+├── requirements.txt
+├── .env.example
+├── Dockerfile
+└── README.md
+
+4. Config Files (Detailed)
+4.1 config/entities.yaml
+
+Design it like this:
+
+text
+categories:
+  hip_hop:
+    entities:
+      - "Drake"
+      - "Kendrick Lamar"
+      - "Travis Scott"
+      - "Future"
+      - "Nicki Minaj"
+    channels:
+      - "VladTV"
+      - "Drink Champs"
+      - "Million Dollaz Worth Of Game"
+      - "No Jumper"
+    priority_weights:
+      "Drake": 1.5
+      "Kendrick Lamar": 1.4
+      "VladTV": 1.3
+
+  nba:
+    entities:
+      - "LeBron James"
+      - "Stephen Curry"
+      - "Kevin Durant"
+      - "Victor Wembanyama"
+    channels:
+      - "NBA"
+      - "House of Highlights"
+      - "All The Smoke"
+
+  celebrity:
+    entities:
+      - "Kai Cenat"
+      - "Joe Rogan"
+      - "MrBeast"
+      - "Andrew Tate"
+    channels:
+      - "Impaulsive"
+      - "Full Send Podcast"
+      - "PBD Podcast"
+
+keywords:
+  - "interview"
+  - "podcast"
+  - "full episode"
+  - "conversation"
+  - "media day"
+  - "press conference"
+  - "off air"
+
+time_window_hours: 72
+default_region: "US"
+
+4.2 config/settings.yaml
+
+text
+scoring:
+  recency_weight: 0.3
+  engagement_weight: 0.3
+  velocity_weight: 0.2
+  cross_platform_weight: 0.1
+  entity_priority_weight: 0.1
+
+limits:
+  max_candidates_per_category: 200
+  top_n_per_category_for_discord: 5
+
+discord:
+  enabled: true
+  # Webhook URL will come from env var, not here
+
+storage:
+  sqlite_path: "clip_trends.db"
+  export_csv: true
+  csv_output_dir: "exports"
+
+5. Clients and Core Logic
+5.1 YouTube Client (clients/youtube_client.py)
+
+Requirements:
+
+    A YouTubeClient class that:
+
+        Takes an API key in the constructor.
+
+        Has async or sync methods to:
+
+            Search videos for a given entity, keyword, and category (hip_hop/nba/celebrity).
+
+            Fetch detailed stats for video IDs.
+
+Pseudo-interface:
+
+python
+@dataclass
+class VideoCandidate:
+  video_id: str
+  title: str
+  channel_title: str
+  published_at: datetime
+  views: int
+  likes: int
+  comments: int
+  duration_seconds: int
+  url: str
+  category: str          # hip_hop / nba / celebrity
+  entity_matched: str    # which name was matched
+
+Methods:
+
+    search_candidates(entity: str, keyword: str, category: str, published_after: datetime) -> list[VideoCandidate]
+
+        Uses search.list with:
+
+            q = f"{entity} {keyword}"
+
+            type = "video"
+
+            order = "date"
+
+            publishedAfter = ISO timestamp
+
+        Then uses videos.list to enrich with stats (views, likes, comments, duration).
+
+        Handles pagination via nextPageToken.
+
+    You don’t need to fully implement YouTube trends; just leave a hook method like:
+
+        get_trending(region: str) -> list[VideoCandidate] (can be stubbed or basic).
+
+5.2 Scoring (core/scorer.py)
+
+Goal: compute a score between 0 and 100 for each candidate.
+
+Steps:
+
+    Compute age in hours since published_at.
+
+    Compute:
+
+        recency = 1.0 for brand new, fading to 0 at time_window_hours.
+
+        engagement = combination of likes, views, and like/view ratio.
+
+        velocity = views per hour (log-scaled).
+
+        entity_priority = look up priority from entities.yaml, default 1.0.
+
+        cross_platform_signal = for now, just 0 (but keep param for future).
+
+Example scoring formula (implement something similar, configurable via settings):
+
+python
+def calculate_score(candidate, weights, entity_priority_map, cross_platform_signal=0.0) -> float:
+    age_hours = max(1.0, (now - candidate.published_at).total_seconds() / 3600)
+
+    recency = max(0.0, 1.0 - age_hours / time_window_hours)
+    like_ratio = candidate.likes / candidate.views if candidate.views > 0 else 0
+    engagement = min(1.0, like_ratio / 0.05)  # normalize around 5% like rate
+    velocity = math.log10(max(1.0, candidate.views / age_hours))
+
+    priority = entity_priority_map.get(candidate.entity_matched, 1.0)
+
+    score = (
+        weights["recency_weight"] * recency +
+        weights["engagement_weight"] * engagement +
+        weights["velocity_weight"] * velocity +
+        weights["cross_platform_weight"] * cross_platform_signal +
+        weights["entity_priority_weight"] * priority
+    )
+
+    # Scale to 0–100
+    return max(0.0, min(100.0, score * 20))
+
+Also implement:
+
+    filter_candidates(candidates):
+
+        Must include entity name and one of the interview keywords in title/description.
+
+        Exclude videos shorter than e.g. 60 seconds if you primarily want long-form source.
+
+    rank_by_category(candidates):
+
+        Group by category.
+
+        Sort by score descending.
+
+        Deduplicate similar items (same entity + channel).
+
+        Return top_hiphop, top_nba, top_celebrity.
+
+5.3 Storage (core/storage.py)
+
+Use SQLite by default:
+
+    Table trending_videos with at least:
+
+        id (PK)
+
+        run_date
+
+        category
+
+        entity
+
+        title
+
+        channel
+
+        published_at
+
+        views
+
+        likes
+
+        comments
+
+        score
+
+        url
+
+Provide functions:
+
+    init_db(path: str) -> None
+
+    save_run(run_date: date, candidates: list[VideoCandidate]) -> None
+
+    Optional: export_csv(run_date: date, output_dir: str) -> Path
+
+6. Discord Notifications (notifiers/discord_notifier.py)
+
+Use a webhook, not a full bot.
+
+Environment variable:
+
+    DISCORD_WEBHOOK_URL
+
+Create a DiscordNotifier class with:
+
+python
+class DiscordNotifier:
+    def __init__(self, webhook_url: str):
+        self.webhook_url = webhook_url
+
+    def build_summary_message(self, top_hiphop, top_nba, top_celebrity) -> str:
+        # Build a readable plain-text message
+
+    def send_summary(self, content: str) -> None:
+        # POST {"content": content} to webhook_url with requests or httpx
+
+Message format example:
+
+text
+**🚀 Daily Clip Targets – 2025-12-12**
+
+**Hip Hop 🔥**
+1) Drake – VladTV (45K views, Score: 87) https://youtube.com/...
+2) Kendrick Lamar – Drink Champs (23K views, Score: 79) https://youtube.com/...
+
+**NBA 🏀**
+1) LeBron – NBA Media Day (120K views, Score: 92) https://youtube.com/...
+
+**Celebrities 🌍**
+1) Kai Cenat – Podcast (60K views, Score: 84) https://youtube.com/...
+
+Limit to top N per category based on config.
+7. Orchestration and Scheduling (main.py)
+
+main.py should:
+
+    Load environment variables (YOUTUBE_API_KEY, DISCORD_WEBHOOK_URL).
+
+    Load YAML configs (entities.yaml, settings.yaml).
+
+    Initialize:
+
+        YouTubeClient
+
+        Storage
+
+        DiscordNotifier
+
+    For each category:
+
+        Iterate through entities and keywords.
+
+        Call YouTube to fetch candidates within last time_window_hours.
+
+    Filter and score all candidates.
+
+    Rank and split by category.
+
+    Save results to SQLite (and CSV if enabled).
+
+    Build a Discord summary and send it.
+
+Pseudo-flow:
+
+python
+def main():
+    config = load_config()
+    yt_client = YouTubeClient(api_key=os.getenv("YOUTUBE_API_KEY"))
+    notifier = DiscordNotifier(webhook_url=os.getenv("DISCORD_WEBHOOK_URL"))
+    storage = Storage(config.storage.sqlite_path)
+
+    candidates = []
+
+    for category, data in config.categories.items():
+        for entity in data.entities:
+            for keyword in config.keywords:
+                new_candidates = yt_client.search_candidates(
+                    entity=entity,
+                    keyword=keyword,
+                    category=category,
+                    published_after=time_window_start,
+                )
+                candidates.extend(new_candidates)
+
+    filtered = filter_candidates(candidates, config)
+    scored = score_candidates(filtered, config)
+    top_by_category = rank_by_category(scored, config)
+
+    run_date = today()
+    storage.save_run(run_date, scored)
+    storage.export_csv(run_date, config.storage.csv_output_dir)
+
+    if config.discord.enabled:
+        content = notifier.build_summary_message(
+            top_by_category["hip_hop"],
+            top_by_category["nba"],
+            top_by_category["celebrity"],
+        )
+        notifier.send_summary(content)
+
+You should also:
+
+    Add logging.
+
+    Handle API errors and rate limits gracefully.
+
+    Make everything type-hinted and reasonably documented.
+
+8. Requirements and Environment
+8.1 requirements.txt
+
+Use realistic versions, for example:
+
+text
+google-api-python-client
+google-auth-oauthlib
+google-auth-httplib2
+httpx
+requests
+PyYAML
+pandas
+python-dotenv
+
+(You can add any extra you need.)
+8.2 .env.example
+
+text
+YOUTUBE_API_KEY=your_youtube_api_key_here
+DISCORD_WEBHOOK_URL=your_discord_webhook_url_here
+
+9. Deployment
+
+    Provide a Dockerfile using Python 3.11.
+
+    Document how to:
+
+        Install deps.
+
+        Create and populate .env.
+
+        Run python main.py locally.
+
+        Deploy as a scheduled job on Railway/Render (e.g. cron worker).
+
+10. Deliverables
+
+When you finish, provide:
+
+    All source files following the structure above.
+
+    A filled sample entities.yaml and settings.yaml.
+
+    A working main.py that can be run with real keys.
+
+    Instructions in README.md:
+
+        Setup
+
+        How to get YouTube API key
+
+        How to set Discord webhook
+
+        How to run once
+
+        How to schedule
+
+Make the code clean, modular, and ready for extension (e.g., TikTok later).
