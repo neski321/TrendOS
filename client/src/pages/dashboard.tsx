@@ -1,48 +1,22 @@
 import Layout from "@/components/layout";
-import { MOCK_CANDIDATES } from "@/lib/mock-data";
 import { TrendCard } from "@/components/trend-card";
 import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ArrowUpRight, TrendingUp, Users, Activity, PlayCircle, Zap } from "lucide-react";
+import { ArrowUpRight, TrendingUp, Users, Activity, PlayCircle, Zap, Loader2 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
-import { useToast } from "@/hooks/use-toast";
-
-// Mock Analytics Data
-const velocityData = [
-  { time: '00:00', views: 4000 },
-  { time: '04:00', views: 3000 },
-  { time: '08:00', views: 12000 },
-  { time: '12:00', views: 45000 },
-  { time: '16:00', views: 32000 },
-  { time: '20:00', views: 58000 },
-  { time: '23:59', views: 42000 },
-];
-
-const categoryData = [
-  { name: 'Hip Hop', count: 145, color: '#00E599' },
-  { name: 'NBA', count: 86, color: '#7000FF' },
-  { name: 'Celeb', count: 112, color: '#F59E0B' },
-];
+import { useMetrics, useTopPicks, useTriggerScan } from "@/lib/api";
 
 export default function Dashboard() {
-  const topPicks = MOCK_CANDIDATES.filter(c => c.score > 90).slice(0, 3);
-  const { toast } = useToast();
+  const { data: metrics, isLoading: metricsLoading } = useMetrics();
+  const { data: topPicks = [], isLoading: picksLoading } = useTopPicks(3);
+  const triggerScan = useTriggerScan();
+  
+  // Use live data or fallback to empty arrays
+  const velocityData = metrics?.velocityData || [];
+  const categoryData = metrics?.categoryCounts || [];
 
   const handleQuickScan = () => {
-    toast({
-      title: "Quick Scan Initiated",
-      description: "Scanning all configured entities for new content...",
-      duration: 3000,
-    });
-    
-    // Simulate scan completion
-    setTimeout(() => {
-      toast({
-        title: "Scan Complete",
-        description: "Found 3 new candidates. Updating metrics...",
-        duration: 3000,
-      });
-    }, 2000);
+    triggerScan.mutate();
   };
 
   return (
@@ -57,63 +31,84 @@ export default function Dashboard() {
               Overview of daily trends, system health, and top performing content.
             </p>
           </div>
-          <Button onClick={handleQuickScan} className="bg-primary text-black hover:bg-primary/90 font-medium">
-            <Zap className="w-4 h-4 mr-2" />
-            Run Quick Scan
+          <Button 
+            onClick={handleQuickScan} 
+            disabled={triggerScan.isPending}
+            className="bg-primary text-black hover:bg-primary/90 font-medium"
+          >
+            {triggerScan.isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Triggering Scan...
+              </>
+            ) : (
+              <>
+                <Zap className="w-4 h-4 mr-2" />
+                Run Quick Scan
+              </>
+            )}
           </Button>
         </div>
 
         {/* Key Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card className="bg-card border-border">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between space-y-0 pb-2">
-                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Scanned</p>
-                <Activity className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div className="text-2xl font-bold font-mono">2,543</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                <span className="text-primary">+20.1%</span> from yesterday
-              </p>
-            </CardContent>
-          </Card>
-          <Card className="bg-card border-border">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between space-y-0 pb-2">
-                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Avg. Velocity</p>
-                <TrendingUp className="h-4 w-4 text-primary" />
-              </div>
-              <div className="text-2xl font-bold font-mono">18.2k<span className="text-sm font-sans text-muted-foreground font-normal">/hr</span></div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Across all categories
-              </p>
-            </CardContent>
-          </Card>
-          <Card className="bg-card border-border">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between space-y-0 pb-2">
-                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Active Entities</p>
-                <Users className="h-4 w-4 text-muted-foreground" />
-              </div>
-              <div className="text-2xl font-bold font-mono">48</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                3 new added today
-              </p>
-            </CardContent>
-          </Card>
-          <Card className="bg-card border-border">
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between space-y-0 pb-2">
-                <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Clip Candidates</p>
-                <PlayCircle className="h-4 w-4 text-secondary" />
-              </div>
-              <div className="text-2xl font-bold font-mono">12</div>
-              <p className="text-xs text-muted-foreground mt-1">
-                Score &gt; 85 (High Potential)
-              </p>
-            </CardContent>
-          </Card>
-        </div>
+        {metricsLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-6 h-6 animate-spin text-primary" />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <Card className="bg-card border-border">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between space-y-0 pb-2">
+                  <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Total Scanned</p>
+                  <Activity className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="text-2xl font-bold font-mono">{metrics?.totalScanned?.toLocaleString() || 0}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  All time candidates
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="bg-card border-border">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between space-y-0 pb-2">
+                  <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Avg. Velocity</p>
+                  <TrendingUp className="h-4 w-4 text-primary" />
+                </div>
+                <div className="text-2xl font-bold font-mono">
+                  {metrics?.avgVelocity ? `${(metrics.avgVelocity / 1000).toFixed(1)}k` : '0'}<span className="text-sm font-sans text-muted-foreground font-normal">/hr</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Across all categories
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="bg-card border-border">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between space-y-0 pb-2">
+                  <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Active Entities</p>
+                  <Users className="h-4 w-4 text-muted-foreground" />
+                </div>
+                <div className="text-2xl font-bold font-mono">{metrics?.activeEntities || 0}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Unique entities tracked
+                </p>
+              </CardContent>
+            </Card>
+            <Card className="bg-card border-border">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between space-y-0 pb-2">
+                  <p className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Clip Candidates</p>
+                  <PlayCircle className="h-4 w-4 text-secondary" />
+                </div>
+                <div className="text-2xl font-bold font-mono">{metrics?.clipCandidates || 0}</div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Score &gt; 85 (High Potential)
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Charts Row */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -173,11 +168,21 @@ export default function Dashboard() {
               <h2 className="text-xl font-heading font-semibold">🔥 Top Clip Targets (Score &gt; 90)</h2>
               <Button variant="ghost" className="text-xs font-mono text-muted-foreground hover:text-foreground">VIEW ALL CANDIDATES &rarr;</Button>
            </div>
-           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {topPicks.map(candidate => (
+           {picksLoading ? (
+             <div className="flex items-center justify-center py-12">
+               <Loader2 className="w-6 h-6 animate-spin text-primary" />
+             </div>
+           ) : topPicks.length > 0 ? (
+             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+               {topPicks.map(candidate => (
                  <TrendCard key={candidate.id} candidate={candidate} />
-              ))}
-           </div>
+               ))}
+             </div>
+           ) : (
+             <div className="text-center py-12 text-muted-foreground">
+               No top picks found. Run a scan to discover trending content!
+             </div>
+           )}
         </div>
       </div>
     </Layout>

@@ -1,0 +1,105 @@
+categories:
+  hip_hop:
+    entities:
+      - "Drake"
+      - "Kendrick Lamar"
+      - "Travis Scott"
+      - "Future"
+      - "Nicki Minaj"
+      - "J. Cole"
+      - "21 Savage"
+      - "Lil Baby"
+    channels:
+      - "VladTV"
+      - "Drink Champs"
+      - "Million Dollaz Worth Of Game"
+      - "No Jumper"
+      - "The Breakfast Club"
+    category_keywords:
+      - "hip hop"
+      - "rap"
+      - "hip hop news"
+      - "rap music"
+      - "hip hop culture"
+      - "rap beef"
+      - "hip hop interview"
+      - "rap podcast"
+    priority_weights:
+      "Drake": 1.5
+      "Kendrick Lamar": 1.4
+      "Travis Scott": 1.3
+      "VladTV": 1.3
+      "Drink Champs": 1.2
+
+  nba:
+    entities:
+      - "LeBron James"
+      - "Stephen Curry"
+      - "Kevin Durant"
+      - "Victor Wembanyama"
+      - "Luka Doncic"
+      - "Giannis Antetokounmpo"
+      - "Jayson Tatum"
+    channels:
+      - "NBA"
+      - "House of Highlights"
+      - "All The Smoke"
+      - "The Old Man and The Three"
+    category_keywords:
+      - "NBA"
+      - "basketball"
+      - "NBA news"
+      - "NBA highlights"
+      - "NBA trade"
+      - "NBA draft"
+      - "NBA playoffs"
+      - "basketball news"
+    priority_weights:
+      "LeBron James": 1.5
+      "Stephen Curry": 1.4
+      "Kevin Durant": 1.3
+      "House of Highlights": 1.2
+
+  celebrity:
+    entities:
+      - "Kai Cenat"
+      - "Joe Rogan"
+      - "MrBeast"
+      - "Andrew Tate"
+      - "Logan Paul"
+      - "KSI"
+      - "Ishowspeed"
+    channels:
+      - "Impaulsive"
+      - "Full Send Podcast"
+      - "PBD Podcast"
+      - "Flagrant"
+    category_keywords:
+      - "celebrity news"
+      - "entertainment news"
+      - "celebrity gossip"
+      - "celebrity leak"
+      - "celebrity drama"
+      - "entertainment industry"
+      - "celebrity interview"
+      - "celebrity podcast"
+    priority_weights:
+      "Kai Cenat": 1.5
+      "Joe Rogan": 1.4
+      "MrBeast": 1.3
+      "Impaulsive": 1.2
+
+keywords:
+  - "interview"
+  - "podcast"
+  - "full episode"
+  - "conversation"
+  - "media day"
+  - "press conference"
+  - "off air"
+  - "exclusive"
+  - "sits down"
+
+time_window_hours: 72
+default_region: "US"
+

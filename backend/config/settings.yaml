@@ -1,0 +1,29 @@
+scoring:
+  recency_weight: 0.3
+  engagement_weight: 0.3
+  velocity_weight: 0.2
+  cross_platform_weight: 0.1
+  entity_priority_weight: 0.1
+
+limits:
+  max_candidates_per_category: 25
+  top_n_per_category_for_discord: 5
+  min_video_duration_seconds: 60
+  max_video_duration_seconds: 7200  # 3 hours
+
+discord:
+  enabled: true
+
+storage:
+  # database_url will be loaded from DATABASE_URL environment variable
+  # Format: postgresql://user:password@host:port/database
+  # For NeonDB: postgresql://user:password@ep-xxx.region.aws.neon.tech/dbname?sslmode=require
+  database_url: ""
+  export_csv: true
+  csv_output_dir: "exports"
+
+api:
+  youtube:
+    max_results_per_query: 30
+    rate_limit_delay_seconds: 1
+

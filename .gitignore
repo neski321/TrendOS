@@ -4,3 +4,38 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+backend/.env
+backend/.env.local
+*.env
+
+# Python virtual environment
+backend/venv/
+backend/env/
+venv/
+env/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Exports and logs
+exports/
+*.csv
+logs/
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db

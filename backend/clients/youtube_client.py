@@ -1,0 +1,291 @@
+"""YouTube Data API v3 client for searching and fetching video data."""
+import time
+import logging
+from dataclasses import dataclass
+from datetime import datetime
+from typing import List, Optional
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
+
+from utils.time_utils import parse_iso_datetime, format_iso_datetime
+
+logger = logging.getLogger(__name__)
+
+
+@dataclass
+class VideoCandidate:
+    """Represents a video candidate for clipping."""
+    video_id: str
+    title: str
+    channel_title: str
+    published_at: datetime
+    views: int
+    likes: int
+    comments: int
+    duration_seconds: int
+    url: str
+    category: str  # hip_hop / nba / celebrity
+    entity_matched: str  # which name was matched
+    description: str = ""
+    thumbnail_url: str = ""
+
+
+class YouTubeClient:
+    """Client for interacting with YouTube Data API v3."""
+    
+    def __init__(self, api_key: str, rate_limit_delay: float = 1.0):
+        """
+        Initialize YouTube client.
+        
+        Args:
+            api_key: YouTube Data API v3 key
+            rate_limit_delay: Delay in seconds between API calls to respect rate limits
+        """
+        self.api_key = api_key
+        self.rate_limit_delay = rate_limit_delay
+        self.youtube = build('youtube', 'v3', developerKey=api_key)
+        self._last_request_time = 0.0
+    
+    def _throttle(self):
+        """Throttle requests to respect rate limits."""
+        current_time = time.time()
+        time_since_last = current_time - self._last_request_time
+        if time_since_last < self.rate_limit_delay:
+            sleep_time = self.rate_limit_delay - time_since_last
+            time.sleep(sleep_time)
+        self._last_request_time = time.time()
+    
+    def _parse_duration(self, duration_str: str) -> int:
+        """Parse ISO 8601 duration string (PT1H2M10S) to seconds."""
+        import re
+        pattern = r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?'
+        match = re.match(pattern, duration_str)
+        if not match:
+            return 0
+        
+        hours = int(match.group(1) or 0)
+        minutes = int(match.group(2) or 0)
+        seconds = int(match.group(3) or 0)
+        
+        return hours * 3600 + minutes * 60 + seconds
+    
+    def search_candidates(
+        self,
+        entity: str,
+        keyword: str,
+        category: str,
+        published_after: datetime,
+        max_results: int = 50
+    ) -> List[VideoCandidate]:
+        """
+        Search for video candidates matching entity and keyword.
+        
+        Args:
+            entity: Entity name to search for (e.g., "Drake")
+            keyword: Search keyword (e.g., "interview")
+            category: Category name (hip_hop, nba, celebrity)
+            published_after: Only return videos published after this datetime
+            max_results: Maximum number of results to return
+            
+        Returns:
+            List of VideoCandidate objects
+        """
+        query = f"{entity} {keyword}"
+        published_after_iso = format_iso_datetime(published_after)
+        
+        candidates = []
+        next_page_token = None
+        
+        try:
+            while len(candidates) < max_results:
+                self._throttle()
+                
+                # Search for videos
+                search_response = self.youtube.search().list(
+                    q=query,
+                    part='id,snippet',
+                    type='video',
+                    order='date',
+                    publishedAfter=published_after_iso,
+                    maxResults=min(50, max_results - len(candidates)),
+                    pageToken=next_page_token
+                ).execute()
+                
+                if not search_response.get('items'):
+                    break
+                
+                # Extract video IDs
+                video_ids = [item['id']['videoId'] for item in search_response['items']]
+                
+                if not video_ids:
+                    break
+                
+                # Get detailed video information
+                self._throttle()
+                videos_response = self.youtube.videos().list(
+                    part='statistics,contentDetails,snippet',
+                    id=','.join(video_ids)
+                ).execute()
+                
+                for video_item in videos_response.get('items', []):
+                    try:
+                        video_id = video_item['id']
+                        snippet = video_item['snippet']
+                        statistics = video_item.get('statistics', {})
+                        content_details = video_item.get('contentDetails', {})
+                        
+                        published_at = parse_iso_datetime(snippet['publishedAt'])
+                        duration_seconds = self._parse_duration(content_details.get('duration', 'PT0S'))
+                        
+                        candidate = VideoCandidate(
+                            video_id=video_id,
+                            title=snippet.get('title', ''),
+                            channel_title=snippet.get('channelTitle', ''),
+                            published_at=published_at,
+                            views=int(statistics.get('viewCount', 0)),
+                            likes=int(statistics.get('likeCount', 0)),
+                            comments=int(statistics.get('commentCount', 0)),
+                            duration_seconds=duration_seconds,
+                            url=f"https://www.youtube.com/watch?v={video_id}",
+                            category=category,
+                            entity_matched=entity,
+                            description=snippet.get('description', ''),
+                            thumbnail_url=snippet.get('thumbnails', {}).get('high', {}).get('url', '')
+                        )
+                        
+                        candidates.append(candidate)
+                    except (KeyError, ValueError) as e:
+                        logger.warning(f"Error parsing video {video_item.get('id', 'unknown')}: {e}")
+                        continue
+                
+                next_page_token = search_response.get('nextPageToken')
+                if not next_page_token:
+                    break
+                    
+        except HttpError as e:
+            logger.error(f"YouTube API error for query '{query}': {e}")
+            if e.resp.status == 403:
+                logger.error("Rate limit exceeded or API key invalid")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error searching YouTube: {e}")
+            raise
+        
+        logger.info(f"Found {len(candidates)} candidates for '{entity} {keyword}'")
+        return candidates
+    
+    def search_by_category_keyword(
+        self,
+        category_keyword: str,
+        category: str,
+        published_after: datetime,
+        max_results: int = 50,
+        order: str = "viewCount"  # Use viewCount for trending, or "date" for recent
+    ) -> List[VideoCandidate]:
+        """
+        Search for trending videos by category keyword (e.g., "hip hop", "NBA", "celebrity news").
+        
+        Args:
+            category_keyword: Category keyword to search for (e.g., "hip hop", "NBA")
+            category: Category name (hip_hop, nba, celebrity)
+            published_after: Only return videos published after this datetime
+            max_results: Maximum number of results to return
+            order: Sort order - "viewCount" for trending, "date" for recent, "rating" for top rated
+            
+        Returns:
+            List of VideoCandidate objects
+        """
+        query = category_keyword
+        published_after_iso = format_iso_datetime(published_after)
+        
+        candidates = []
+        next_page_token = None
+        
+        try:
+            while len(candidates) < max_results:
+                self._throttle()
+                
+                # Search for videos
+                search_response = self.youtube.search().list(
+                    q=query,
+                    part='id,snippet',
+                    type='video',
+                    order=order,  # Use viewCount to get trending content
+                    publishedAfter=published_after_iso,
+                    maxResults=min(50, max_results - len(candidates)),
+                    pageToken=next_page_token
+                ).execute()
+                
+                if not search_response.get('items'):
+                    break
+                
+                # Extract video IDs
+                video_ids = [item['id']['videoId'] for item in search_response['items']]
+                
+                if not video_ids:
+                    break
+                
+                # Get detailed video information
+                self._throttle()
+                videos_response = self.youtube.videos().list(
+                    part='statistics,contentDetails,snippet',
+                    id=','.join(video_ids)
+                ).execute()
+                
+                for video_item in videos_response.get('items', []):
+                    try:
+                        video_id = video_item['id']
+                        snippet = video_item['snippet']
+                        statistics = video_item.get('statistics', {})
+                        content_details = video_item.get('contentDetails', {})
+                        
+                        published_at = parse_iso_datetime(snippet['publishedAt'])
+                        duration_seconds = self._parse_duration(content_details.get('duration', 'PT0S'))
+                        
+                        # For category-wide searches, use the category keyword as the entity
+                        candidate = VideoCandidate(
+                            video_id=video_id,
+                            title=snippet.get('title', ''),
+                            channel_title=snippet.get('channelTitle', ''),
+                            published_at=published_at,
+                            views=int(statistics.get('viewCount', 0)),
+                            likes=int(statistics.get('likeCount', 0)),
+                            comments=int(statistics.get('commentCount', 0)),
+                            duration_seconds=duration_seconds,
+                            url=f"https://www.youtube.com/watch?v={video_id}",
+                            category=category,
+                            entity_matched=category_keyword,  # Use category keyword as entity
+                            description=snippet.get('description', ''),
+                            thumbnail_url=snippet.get('thumbnails', {}).get('high', {}).get('url', '')
+                        )
+                        
+                        candidates.append(candidate)
+                    except (KeyError, ValueError) as e:
+                        logger.warning(f"Error parsing video {video_item.get('id', 'unknown')}: {e}")
+                        continue
+                
+                next_page_token = search_response.get('nextPageToken')
+                if not next_page_token:
+                    break
+                    
+        except HttpError as e:
+            logger.error(f"YouTube API error for category keyword '{query}': {e}")
+            if e.resp.status == 403:
+                logger.error("Rate limit exceeded or API key invalid")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error searching YouTube for category keyword: {e}")
+            raise
+        
+        logger.info(f"Found {len(candidates)} candidates for category keyword '{category_keyword}'")
+        return candidates
+    
+    def get_trending(self, region: str = "US", max_results: int = 50) -> List[VideoCandidate]:
+        """
+        Get trending videos for a region (stub for future implementation).
+        
+        Note: This requires OAuth2 authentication and is not implemented yet.
+        """
+        logger.warning("get_trending() is not yet implemented (requires OAuth2)")
+        return []
+

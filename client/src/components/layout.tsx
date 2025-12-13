@@ -4,10 +4,12 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { useBackendHealth } from "@/lib/api";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { data: health, error: healthError } = useBackendHealth();
 
   const navItems = [
     { icon: LayoutDashboard, label: "Mission Control", href: "/" },
@@ -28,8 +30,17 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div>
              <h1 className="font-heading font-bold text-lg leading-none tracking-tight">TrendOS</h1>
              <div className="flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider">System Online</span>
+                <span className={cn(
+                  "w-1.5 h-1.5 rounded-full",
+                  healthError ? "bg-red-500 animate-pulse" : 
+                  health?.status === "ok" ? "bg-green-500 animate-pulse" : 
+                  "bg-yellow-500 animate-pulse"
+                )} />
+                <span className="text-[10px] text-muted-foreground font-mono uppercase tracking-wider">
+                  {healthError ? "Backend Offline" : 
+                   health?.status === "ok" ? "System Online" : 
+                   "Checking..."}
+                </span>
              </div>
           </div>
         </div>

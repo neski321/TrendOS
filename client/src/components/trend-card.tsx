@@ -1,4 +1,4 @@
-import { VideoCandidate } from "@/lib/mock-data";
+import { VideoCandidate } from "@/lib/types";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,9 +18,12 @@ export function TrendCard({ candidate }: { candidate: VideoCandidate }) {
         {/* Image Section - Reduced height on mobile, narrower on desktop */}
         <div className="relative h-32 sm:h-auto sm:w-56 shrink-0 overflow-hidden bg-muted">
           <img 
-            src={candidate.thumbnail} 
+            src={candidate.thumbnail || '/placeholder.png'} 
             alt={candidate.title}
             className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
+            onError={(e) => {
+              (e.target as HTMLImageElement).src = '/placeholder.png';
+            }}
           />
           <div className="absolute top-2 left-2">
              <Badge variant="secondary" className="bg-black/80 backdrop-blur-sm text-white border-white/10 font-mono text-[10px] uppercase px-1.5 py-0 h-5">
@@ -38,9 +41,13 @@ export function TrendCard({ candidate }: { candidate: VideoCandidate }) {
           <div>
             <div className="flex justify-between items-start mb-2">
               <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono flex-1 min-w-0 mr-2">
-                <span className="text-foreground font-semibold truncate">{candidate.channel}</span>
+                <span className="text-foreground font-semibold truncate">{candidate.channel || 'Unknown'}</span>
                 <span className="shrink-0">•</span>
-                <span className="shrink-0">{formatDistanceToNow(new Date(candidate.publishedAt), { addSuffix: true })}</span>
+                <span className="shrink-0">
+                  {candidate.publishedAt 
+                    ? formatDistanceToNow(new Date(candidate.publishedAt), { addSuffix: true })
+                    : 'Recently'}
+                </span>
               </div>
               <div className="flex items-center gap-1 shrink-0">
                  <span className={`font-mono text-2xl font-bold ${scoreColor}`}>
@@ -66,7 +73,7 @@ export function TrendCard({ candidate }: { candidate: VideoCandidate }) {
                   <span className="text-[10px] text-muted-foreground uppercase truncate">Velocity</span>
                   <span className="font-mono font-medium flex items-center gap-1 text-primary text-xs sm:text-sm truncate">
                     <Flame className="w-3 h-3 shrink-0" />
-                    {candidate.velocity.toLocaleString()}/hr
+                    {(candidate.velocity || 0).toLocaleString()}/hr
                   </span>
                </div>
                <div className="flex flex-col min-w-0">

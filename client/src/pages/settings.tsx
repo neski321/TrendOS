@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import Layout from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -6,9 +7,97 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
-import { Save } from "lucide-react";
+import { Save, MessageSquare, Loader2, Plus, X } from "lucide-react";
+import { useTestDiscord, useSettings, useUpdateSettings, useEntities, useUpdateEntities, type EntitiesConfig, type CategoryConfig } from "@/lib/api";
 
 export default function Settings() {
+  const { mutate: testDiscord, isPending: isTestingDiscord } = useTestDiscord();
+  const { data: settings, isLoading: settingsLoading } = useSettings();
+  const { mutate: updateSettings, isPending: isSaving } = useUpdateSettings();
+  const { data: entities, isLoading: entitiesLoading } = useEntities();
+  const { mutate: updateEntities, isPending: isSavingEntities } = useUpdateEntities();
+
+  // Form state
+  const [formData, setFormData] = useState({
+    scoring: {
+      recency_weight: 0.3,
+      engagement_weight: 0.3,
+      velocity_weight: 0.2,
+      cross_platform_weight: 0.1,
+      entity_priority_weight: 0.1,
+    },
+    limits: {
+      max_candidates_per_category: 200,
+      top_n_per_category_for_discord: 5,
+      min_video_duration_seconds: 60,
+      max_video_duration_seconds: 7200,
+    },
+    discord: {
+      enabled: true,
+    },
+  });
+
+  // Load settings into form when they're fetched
+  useEffect(() => {
+    if (settings) {
+      setFormData({
+        scoring: {
+          recency_weight: settings.scoring?.recency_weight ?? 0.3,
+          engagement_weight: settings.scoring?.engagement_weight ?? 0.3,
+          velocity_weight: settings.scoring?.velocity_weight ?? 0.2,
+          cross_platform_weight: settings.scoring?.cross_platform_weight ?? 0.1,
+          entity_priority_weight: settings.scoring?.entity_priority_weight ?? 0.1,
+        },
+        limits: {
+          max_candidates_per_category: settings.limits?.max_candidates_per_category ?? 200,
+          top_n_per_category_for_discord: settings.limits?.top_n_per_category_for_discord ?? 5,
+          min_video_duration_seconds: settings.limits?.min_video_duration_seconds ?? 60,
+          max_video_duration_seconds: settings.limits?.max_video_duration_seconds ?? 7200,
+        },
+        discord: {
+          enabled: settings.discord?.enabled ?? true,
+        },
+      });
+    }
+  }, [settings]);
+
+  const handleSave = () => {
+    updateSettings(formData);
+  };
+
+  const updateScoring = (field: string, value: number) => {
+    setFormData(prev => ({
+      ...prev,
+      scoring: { ...prev.scoring, [field]: value }
+    }));
+  };
+
+  const updateLimits = (field: string, value: number) => {
+    setFormData(prev => ({
+      ...prev,
+      limits: { ...prev.limits, [field]: value }
+    }));
+  };
+
+  const updateDiscord = (field: string, value: boolean) => {
+    setFormData(prev => ({
+      ...prev,
+      discord: { ...prev.discord, [field]: value }
+    }));
+  };
+
+  if (settingsLoading) {
+    return (
+      <Layout>
+        <div className="max-w-4xl mx-auto space-y-8">
+          <div className="flex items-center justify-center h-64">
+            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
        <div className="max-w-4xl mx-auto space-y-8">
@@ -17,8 +106,21 @@ export default function Settings() {
             <h1 className="text-3xl font-heading font-bold mb-1">Configuration</h1>
             <p className="text-muted-foreground text-sm">Manage entities, scoring weights, and notification settings.</p>
           </div>
-          <Button className="bg-primary text-black hover:bg-primary/90">
-            <Save className="w-4 h-4 mr-2" /> Save Changes
+          <Button 
+            className="bg-primary text-black hover:bg-primary/90"
+            onClick={handleSave}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" /> Save Changes
+              </>
+            )}
           </Button>
         </div>
 
@@ -26,45 +128,298 @@ export default function Settings() {
           {/* Entity Configuration */}
           <Card>
             <CardHeader>
-              <CardTitle>Entity Management (entities.yaml)</CardTitle>
-              <CardDescription>Define which artists, players, and creators to track.</CardDescription>
+              <CardTitle>Entity Management</CardTitle>
+              <CardDescription>Define which artists, players, and creators to track. Changes are saved to the database.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label>Hip Hop Entities</Label>
-                  <Textarea 
-                    className="font-mono text-xs h-32 bg-muted/50 border-border"
-                    defaultValue={`- "Drake"\n- "Kendrick Lamar"\n- "Travis Scott"\n- "Future"\n- "Nicki Minaj"`}
-                  />
+              {entitiesLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                 </div>
-                <div className="space-y-2">
-                  <Label>Hip Hop Channels</Label>
-                  <Textarea 
-                    className="font-mono text-xs h-32 bg-muted/50 border-border"
-                    defaultValue={`- "VladTV"\n- "Drink Champs"\n- "Million Dollaz Worth Of Game"\n- "No Jumper"`}
-                  />
+              ) : entities ? (
+                <>
+                  {/* Hip Hop Category */}
+                  <div className="space-y-4 p-4 border border-border rounded-lg">
+                    <h3 className="font-semibold text-lg">Hip Hop</h3>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Entities</Label>
+                        <div className="space-y-2">
+                          {entities.categories.hip_hop.entities.map((entity, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              <Input value={entity} readOnly className="flex-1" />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeEntity('hip_hop', idx)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ))}
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="Add entity..."
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  addEntity('hip_hop', e.currentTarget.value);
+                                  e.currentTarget.value = '';
+                                }
+                              }}
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                if (input) {
+                                  addEntity('hip_hop', input.value);
+                                  input.value = '';
+                                }
+                              }}
+                            >
+                              <Plus className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Channels</Label>
+                        <div className="space-y-2">
+                          {entities.categories.hip_hop.channels.map((channel, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              <Input value={channel} readOnly className="flex-1" />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeChannel('hip_hop', idx)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ))}
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="Add channel..."
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  addChannel('hip_hop', e.currentTarget.value);
+                                  e.currentTarget.value = '';
+                                }
+                              }}
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                if (input) {
+                                  addChannel('hip_hop', input.value);
+                                  input.value = '';
+                                }
+                              }}
+                            >
+                              <Plus className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* NBA Category */}
+                  <div className="space-y-4 p-4 border border-border rounded-lg">
+                    <h3 className="font-semibold text-lg">NBA</h3>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Entities</Label>
+                        <div className="space-y-2">
+                          {entities.categories.nba.entities.map((entity, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              <Input value={entity} readOnly className="flex-1" />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeEntity('nba', idx)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ))}
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="Add entity..."
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  addEntity('nba', e.currentTarget.value);
+                                  e.currentTarget.value = '';
+                                }
+                              }}
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                if (input) {
+                                  addEntity('nba', input.value);
+                                  input.value = '';
+                                }
+                              }}
+                            >
+                              <Plus className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Channels</Label>
+                        <div className="space-y-2">
+                          {entities.categories.nba.channels.map((channel, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              <Input value={channel} readOnly className="flex-1" />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeChannel('nba', idx)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ))}
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="Add channel..."
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  addChannel('nba', e.currentTarget.value);
+                                  e.currentTarget.value = '';
+                                }
+                              }}
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                if (input) {
+                                  addChannel('nba', input.value);
+                                  input.value = '';
+                                }
+                              }}
+                            >
+                              <Plus className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Celebrity Category */}
+                  <div className="space-y-4 p-4 border border-border rounded-lg">
+                    <h3 className="font-semibold text-lg">Celebrity</h3>
+                    <div className="grid md:grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label>Entities</Label>
+                        <div className="space-y-2">
+                          {entities.categories.celebrity.entities.map((entity, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              <Input value={entity} readOnly className="flex-1" />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeEntity('celebrity', idx)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ))}
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="Add entity..."
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  addEntity('celebrity', e.currentTarget.value);
+                                  e.currentTarget.value = '';
+                                }
+                              }}
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                if (input) {
+                                  addEntity('celebrity', input.value);
+                                  input.value = '';
+                                }
+                              }}
+                            >
+                              <Plus className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Channels</Label>
+                        <div className="space-y-2">
+                          {entities.categories.celebrity.channels.map((channel, idx) => (
+                            <div key={idx} className="flex items-center gap-2">
+                              <Input value={channel} readOnly className="flex-1" />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => removeChannel('celebrity', idx)}
+                                className="text-destructive hover:text-destructive"
+                              >
+                                <X className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          ))}
+                          <div className="flex gap-2">
+                            <Input
+                              placeholder="Add channel..."
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  addChannel('celebrity', e.currentTarget.value);
+                                  e.currentTarget.value = '';
+                                }
+                              }}
+                            />
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => {
+                                const input = e.currentTarget.previousElementSibling as HTMLInputElement;
+                                if (input) {
+                                  addChannel('celebrity', input.value);
+                                  input.value = '';
+                                }
+                              }}
+                            >
+                              <Plus className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  Failed to load entities configuration
                 </div>
-              </div>
-              
-              <Separator />
-              
-              <div className="grid md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label>NBA Entities</Label>
-                  <Textarea 
-                    className="font-mono text-xs h-32 bg-muted/50 border-border"
-                    defaultValue={`- "LeBron James"\n- "Stephen Curry"\n- "Kevin Durant"\n- "Victor Wembanyama"`}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>NBA Channels</Label>
-                  <Textarea 
-                    className="font-mono text-xs h-32 bg-muted/50 border-border"
-                    defaultValue={`- "NBA"\n- "House of Highlights"\n- "All The Smoke"`}
-                  />
-                </div>
-              </div>
+              )}
             </CardContent>
           </Card>
 
@@ -78,29 +433,37 @@ export default function Settings() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div className="space-y-2">
                   <Label>Recency Weight</Label>
-                  <Input type="number" defaultValue="0.3" step="0.1" className="font-mono" />
+                  <Input 
+                    type="number" 
+                    value={formData.scoring.recency_weight} 
+                    step="0.1" 
+                    className="font-mono"
+                    onChange={(e) => updateScoring("recency_weight", parseFloat(e.target.value) || 0)}
+                  />
                   <p className="text-[10px] text-muted-foreground">Higher = favors newer videos.</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Engagement Weight</Label>
-                  <Input type="number" defaultValue="0.3" step="0.1" className="font-mono" />
+                  <Input 
+                    type="number" 
+                    value={formData.scoring.engagement_weight} 
+                    step="0.1" 
+                    className="font-mono"
+                    onChange={(e) => updateScoring("engagement_weight", parseFloat(e.target.value) || 0)}
+                  />
                   <p className="text-[10px] text-muted-foreground">Favors high likes/comments.</p>
                 </div>
                 <div className="space-y-2">
                   <Label>Velocity Weight</Label>
-                  <Input type="number" defaultValue="0.2" step="0.1" className="font-mono" />
+                  <Input 
+                    type="number" 
+                    value={formData.scoring.velocity_weight} 
+                    step="0.1" 
+                    className="font-mono"
+                    onChange={(e) => updateScoring("velocity_weight", parseFloat(e.target.value) || 0)}
+                  />
                   <p className="text-[10px] text-muted-foreground">Favors fast-growing views.</p>
                 </div>
-              </div>
-              <Separator />
-              <div className="flex items-center justify-between">
-                 <div className="space-y-0.5">
-                    <Label>Time Window</Label>
-                    <p className="text-xs text-muted-foreground">Only scan videos published within this window.</p>
-                 </div>
-                 <div className="w-32">
-                    <Input defaultValue="72" className="font-mono text-right" />
-                 </div>
               </div>
             </CardContent>
           </Card>
@@ -117,22 +480,62 @@ export default function Settings() {
                   <Label className="text-base">Enable Discord Alerts</Label>
                   <p className="text-xs text-muted-foreground">Send daily summary to the configured webhook.</p>
                 </div>
-                <Switch defaultChecked />
+                <Switch 
+                  checked={formData.discord.enabled}
+                  onCheckedChange={(checked) => updateDiscord("enabled", checked)}
+                />
               </div>
               
               <div className="space-y-2">
                  <Label>Webhook URL</Label>
                  <Input type="password" value="https://discord.com/api/webhooks/..." className="font-mono text-muted-foreground" readOnly />
+                 <p className="text-xs text-muted-foreground">Configure DISCORD_WEBHOOK_URL in backend/.env</p>
+              </div>
+
+              <div className="pt-2">
+                <Button 
+                  variant="outline" 
+                  onClick={() => testDiscord()}
+                  disabled={isTestingDiscord}
+                  className="w-full"
+                >
+                  {isTestingDiscord ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Testing...
+                    </>
+                  ) : (
+                    <>
+                      <MessageSquare className="w-4 h-4 mr-2" />
+                      Test Discord Notification
+                    </>
+                  )}
+                </Button>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Send a test message to verify your Discord webhook is working.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                  <div className="space-y-2">
                     <Label>Max Candidates per Category</Label>
-                    <Input type="number" defaultValue="200" className="font-mono" />
+                    <Input 
+                      type="number" 
+                      value={formData.limits.max_candidates_per_category} 
+                      className="font-mono"
+                      onChange={(e) => updateLimits("max_candidates_per_category", parseInt(e.target.value) || 0)}
+                    />
+                    <p className="text-xs text-muted-foreground">Maximum candidates saved per category per scan</p>
                  </div>
                  <div className="space-y-2">
                     <Label>Top N for Discord</Label>
-                    <Input type="number" defaultValue="5" className="font-mono" />
+                    <Input 
+                      type="number" 
+                      value={formData.limits.top_n_per_category_for_discord} 
+                      className="font-mono"
+                      onChange={(e) => updateLimits("top_n_per_category_for_discord", parseInt(e.target.value) || 0)}
+                    />
+                    <p className="text-xs text-muted-foreground">Top candidates sent to Discord per category</p>
                  </div>
               </div>
             </CardContent>
