@@ -14,10 +14,21 @@ cmds = [
 
 [phases.build]
 cmds = [
+  "pwd",
+  "echo 'Current directory:' && pwd",
+  "echo 'Files in root:' && ls -la",
   "npm run check || true",
-  "npm run build"
+  "echo 'Starting production build...'",
+  "npm run build || (echo 'Build failed!' && exit 1)",
+  "echo 'Build completed. Checking dist directory...'",
+  "pwd",
+  "ls -la dist/ || (echo 'ERROR: dist directory not found!' && exit 1)",
+  "ls -la dist/index.cjs || (echo 'ERROR: dist/index.cjs not found!' && exit 1)",
+  "ls -la dist/public || (echo 'ERROR: dist/public not found!' && exit 1)",
+  "echo 'Build verification complete. All files present.'",
+  "echo 'Final dist contents:' && find dist -type f | head -20"
 ]
 
 [start]
-cmd = "NODE_ENV=production node dist/index.cjs"
+cmd = "cd /app && NODE_ENV=production node dist/index.cjs"
 

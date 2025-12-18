@@ -33,35 +33,53 @@ const allowlist = [
 ];
 
 async function buildAll() {
-  await rm("dist", { recursive: true, force: true });
+  try {
+    console.log("[BUILD] Cleaning dist directory...");
+    await rm("dist", { recursive: true, force: true });
 
-  console.log("building client...");
-  await viteBuild();
+    console.log("[BUILD] Building client (Vite)...");
+    await viteBuild();
+    console.log("[BUILD] Client build completed");
 
-  console.log("building server...");
-  const pkg = JSON.parse(await readFile("package.json", "utf-8"));
-  const allDeps = [
-    ...Object.keys(pkg.dependencies || {}),
-    ...Object.keys(pkg.devDependencies || {}),
-  ];
-  const externals = allDeps.filter((dep) => !allowlist.includes(dep));
+    console.log("[BUILD] Building server (esbuild)...");
+    const pkg = JSON.parse(await readFile("package.json", "utf-8"));
+    const allDeps = [
+      ...Object.keys(pkg.dependencies || {}),
+      ...Object.keys(pkg.devDependencies || {}),
+    ];
+    const externals = allDeps.filter((dep) => !allowlist.includes(dep));
 
-  await esbuild({
-    entryPoints: ["server/index.ts"],
-    platform: "node",
-    bundle: true,
-    format: "cjs",
-    outfile: "dist/index.cjs",
-    define: {
-      "process.env.NODE_ENV": '"production"',
-    },
-    minify: true,
-    external: externals,
-    logLevel: "info",
-  });
+    await esbuild({
+      entryPoints: ["server/index.ts"],
+      platform: "node",
+      bundle: true,
+      format: "cjs",
+      outfile: "dist/index.cjs",
+      define: {
+        "process.env.NODE_ENV": '"production"',
+      },
+      minify: true,
+      external: externals,
+      logLevel: "info",
+    });
+    console.log("[BUILD] Server build completed");
+
+    // Verify files were created
+    const fs = await import("fs");
+    if (!fs.existsSync("dist/index.cjs")) {
+      throw new Error("dist/index.cjs was not created!");
+    }
+    if (!fs.existsSync("dist/public")) {
+      throw new Error("dist/public was not created!");
+    }
+    console.log("[BUILD] Build verification: All files created successfully");
+  } catch (error) {
+    console.error("[BUILD] Build failed:", error);
+    throw error;
+  }
 }
 
 buildAll().catch((err) => {
-  console.error(err);
+  console.error("[BUILD] Fatal build error:", err);
   process.exit(1);
 });
