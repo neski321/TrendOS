@@ -112,48 +112,54 @@ fi
 echo ""
 
 # Step 3: Set up Python virtual environment
-print_log "$BLUE" "STEP 3" "Setting up Python virtual environment..."
-cd backend
-
-# Detect Python command (try python3 first, then python)
-PYTHON_CMD=""
-if command_exists python3; then
-    PYTHON_CMD="python3"
-elif command_exists python; then
-    PYTHON_CMD="python"
+# On Railway, nixpacks.toml handles Python setup, so we skip this step
+if [ ! -z "$RAILWAY_ENVIRONMENT" ] || [ ! -z "$RAILWAY_PROJECT_ID" ] || [ ! -z "$CI" ]; then
+    print_log "$YELLOW" "INFO" "Running on Railway/CI - Python setup is handled by nixpacks.toml"
+    print_log "$YELLOW" "INFO" "Skipping Python virtual environment setup (nixpacks will handle it)"
+    print_log "$GREEN" "✓" "Python setup deferred to nixpacks.toml"
 else
-    print_log "$RED" "ERROR" "Python not found. Please ensure Python 3.11+ is installed."
-    cd ..
-    exit 1
-fi
+    # Local development: set up Python environment
+    print_log "$BLUE" "STEP 3" "Setting up Python virtual environment..."
+    cd backend
 
-# Always use python -m pip (most reliable, works even if pip command isn't in PATH)
-# This is the recommended way to use pip, especially in virtual environments
-PIP_CMD="$PYTHON_CMD -m pip"
-
-# Verify pip is accessible
-if ! $PIP_CMD --version >/dev/null 2>&1; then
-    print_log "$YELLOW" "WARNING" "pip not immediately accessible, attempting to install..."
-    print_log "$YELLOW" "INFO" "Python version: $($PYTHON_CMD --version 2>&1)"
-    # Try to ensure pip is available
-    $PYTHON_CMD -m ensurepip --upgrade 2>/dev/null || {
-        # If ensurepip fails, try installing pip via get-pip.py
-        print_log "$YELLOW" "INFO" "Trying alternative pip installation method..."
-        curl -sS https://bootstrap.pypa.io/get-pip.py | $PYTHON_CMD 2>/dev/null || true
-    }
-    # Verify again
-    if ! $PIP_CMD --version >/dev/null 2>&1; then
-        print_log "$RED" "ERROR" "pip is still not available after installation attempts"
-        print_log "$YELLOW" "INFO" "On Railway: Make sure nixpacks.toml is being used (don't set a custom build command)"
+    # Detect Python command (try python3 first, then python)
+    PYTHON_CMD=""
+    if command_exists python3; then
+        PYTHON_CMD="python3"
+    elif command_exists python; then
+        PYTHON_CMD="python"
+    else
+        print_log "$RED" "ERROR" "Python not found. Please ensure Python 3.11+ is installed."
         cd ..
         exit 1
     fi
-fi
 
-print_log "$GREEN" "✓" "Python found: $($PYTHON_CMD --version 2>&1)"
-print_log "$GREEN" "✓" "pip accessible via $PYTHON_CMD -m pip"
+    # Always use python -m pip (most reliable, works even if pip command isn't in PATH)
+    # This is the recommended way to use pip, especially in virtual environments
+    PIP_CMD="$PYTHON_CMD -m pip"
 
-if [ ! -d "venv" ]; then
+    # Verify pip is accessible
+    if ! $PIP_CMD --version >/dev/null 2>&1; then
+        print_log "$YELLOW" "WARNING" "pip not immediately accessible, attempting to install..."
+        print_log "$YELLOW" "INFO" "Python version: $($PYTHON_CMD --version 2>&1)"
+        # Try to ensure pip is available
+        $PYTHON_CMD -m ensurepip --upgrade 2>/dev/null || {
+            # If ensurepip fails, try installing pip via get-pip.py
+            print_log "$YELLOW" "INFO" "Trying alternative pip installation method..."
+            curl -sS https://bootstrap.pypa.io/get-pip.py | $PYTHON_CMD 2>/dev/null || true
+        }
+        # Verify again
+        if ! $PIP_CMD --version >/dev/null 2>&1; then
+            print_log "$RED" "ERROR" "pip is still not available after installation attempts"
+            cd ..
+            exit 1
+        fi
+    fi
+
+    print_log "$GREEN" "✓" "Python found: $($PYTHON_CMD --version 2>&1)"
+    print_log "$GREEN" "✓" "pip accessible via $PYTHON_CMD -m pip"
+
+    if [ ! -d "venv" ]; then
     print_log "$YELLOW" "INFO" "Creating Python virtual environment..."
     $PYTHON_CMD -m venv venv
     if [ $? -ne 0 ]; then
@@ -161,41 +167,42 @@ if [ ! -d "venv" ]; then
         cd ..
         exit 1
     fi
-    print_log "$GREEN" "✓" "Python virtual environment created"
-else
-    print_log "$GREEN" "✓" "Python virtual environment already exists"
-fi
+        print_log "$GREEN" "✓" "Python virtual environment created"
+    else
+        print_log "$GREEN" "✓" "Python virtual environment already exists"
+    fi
 
-# Activate virtual environment
-print_log "$YELLOW" "INFO" "Activating virtual environment..."
-source venv/bin/activate
+    # Activate virtual environment
+    print_log "$YELLOW" "INFO" "Activating virtual environment..."
+    source venv/bin/activate
 
-# Use venv's pip
-PIP_CMD="pip"
+    # Use venv's pip
+    PIP_CMD="pip"
 
-# Upgrade pip
-print_log "$YELLOW" "INFO" "Upgrading pip..."
-$PIP_CMD install --upgrade pip --quiet
-if [ $? -ne 0 ]; then
-    print_log "$YELLOW" "WARNING" "Failed to upgrade pip, continuing anyway..."
-fi
+    # Upgrade pip
+    print_log "$YELLOW" "INFO" "Upgrading pip..."
+    $PIP_CMD install --upgrade pip --quiet
+    if [ $? -ne 0 ]; then
+        print_log "$YELLOW" "WARNING" "Failed to upgrade pip, continuing anyway..."
+    fi
 
-# Step 4: Install Python dependencies
-print_log "$BLUE" "STEP 4" "Installing Python dependencies..."
-print_log "$YELLOW" "INFO" "Installing from requirements.txt (this may take a few minutes)..."
-$PIP_CMD install -r requirements.txt
-if [ $? -ne 0 ]; then
-    print_log "$RED" "ERROR" "Failed to install Python dependencies"
+    # Step 4: Install Python dependencies
+    print_log "$BLUE" "STEP 4" "Installing Python dependencies..."
+    print_log "$YELLOW" "INFO" "Installing from requirements.txt (this may take a few minutes)..."
+    $PIP_CMD install -r requirements.txt
+    if [ $? -ne 0 ]; then
+        print_log "$RED" "ERROR" "Failed to install Python dependencies"
+        deactivate
+        cd ..
+        exit 1
+    fi
+    print_log "$GREEN" "✓" "Python dependencies installed"
+
+    # Deactivate virtual environment
     deactivate
     cd ..
-    exit 1
+    echo ""
 fi
-print_log "$GREEN" "✓" "Python dependencies installed"
-
-# Deactivate virtual environment
-deactivate
-cd ..
-echo ""
 
 # Step 5: Run database migrations (optional - only if DATABASE_URL is available)
 print_log "$BLUE" "STEP 5" "Running database migrations..."
@@ -215,10 +222,23 @@ fi
 if [ ! -z "$DATABASE_URL" ]; then
     print_log "$YELLOW" "INFO" "Running database migrations..."
     cd backend
-    source venv/bin/activate
-    python3 migrate.py
-    MIGRATION_EXIT_CODE=$?
-    deactivate
+    
+    # On Railway, venv is set up by nixpacks, so check if it exists
+    if [ -d "venv" ] && [ -f "venv/bin/activate" ]; then
+        source venv/bin/activate
+        python3 migrate.py
+        MIGRATION_EXIT_CODE=$?
+        deactivate
+    elif [ ! -z "$RAILWAY_ENVIRONMENT" ] || [ ! -z "$RAILWAY_PROJECT_ID" ] || [ ! -z "$CI" ]; then
+        # On Railway, use system python (nixpacks sets it up)
+        python3 migrate.py
+        MIGRATION_EXIT_CODE=$?
+    else
+        # Local dev without venv - try system python
+        python3 migrate.py
+        MIGRATION_EXIT_CODE=$?
+    fi
+    
     cd ..
     
     if [ $MIGRATION_EXIT_CODE -eq 0 ]; then
