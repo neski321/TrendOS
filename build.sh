@@ -127,22 +127,31 @@ else
     exit 1
 fi
 
-# Detect pip command
-PIP_CMD=""
-if command_exists pip3; then
-    PIP_CMD="pip3"
-elif command_exists pip; then
-    PIP_CMD="pip"
-else
-    # Try python -m pip
-    if $PYTHON_CMD -m pip --version >/dev/null 2>&1; then
-        PIP_CMD="$PYTHON_CMD -m pip"
-    else
-        print_log "$RED" "ERROR" "pip not found. Please ensure pip is installed."
+# Always use python -m pip (most reliable, works even if pip command isn't in PATH)
+# This is the recommended way to use pip, especially in virtual environments
+PIP_CMD="$PYTHON_CMD -m pip"
+
+# Verify pip is accessible
+if ! $PIP_CMD --version >/dev/null 2>&1; then
+    print_log "$YELLOW" "WARNING" "pip not immediately accessible, attempting to install..."
+    print_log "$YELLOW" "INFO" "Python version: $($PYTHON_CMD --version 2>&1)"
+    # Try to ensure pip is available
+    $PYTHON_CMD -m ensurepip --upgrade 2>/dev/null || {
+        # If ensurepip fails, try installing pip via get-pip.py
+        print_log "$YELLOW" "INFO" "Trying alternative pip installation method..."
+        curl -sS https://bootstrap.pypa.io/get-pip.py | $PYTHON_CMD 2>/dev/null || true
+    }
+    # Verify again
+    if ! $PIP_CMD --version >/dev/null 2>&1; then
+        print_log "$RED" "ERROR" "pip is still not available after installation attempts"
+        print_log "$YELLOW" "INFO" "On Railway: Make sure nixpacks.toml is being used (don't set a custom build command)"
         cd ..
         exit 1
     fi
 fi
+
+print_log "$GREEN" "✓" "Python found: $($PYTHON_CMD --version 2>&1)"
+print_log "$GREEN" "✓" "pip accessible via $PYTHON_CMD -m pip"
 
 if [ ! -d "venv" ]; then
     print_log "$YELLOW" "INFO" "Creating Python virtual environment..."
