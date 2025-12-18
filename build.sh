@@ -42,21 +42,26 @@ fi
 NPM_VERSION=$(npm --version)
 print_log "$GREEN" "✓" "npm found: $NPM_VERSION"
 
-# Check Python
-if ! command_exists python3; then
-    print_log "$RED" "ERROR" "Python 3 is not installed. Please install Python 3.11+ from https://www.python.org"
-    exit 1
-fi
-PYTHON_VERSION=$(python3 --version)
-print_log "$GREEN" "✓" "Python found: $PYTHON_VERSION"
+# Check Python (skip on Railway - it will be installed via nixpacks)
+if [ -z "$RAILWAY_ENVIRONMENT" ] && [ -z "$RAILWAY_PROJECT_ID" ]; then
+    # Only check Python if not on Railway (Railway uses nixpacks.toml)
+    if ! command_exists python3; then
+        print_log "$RED" "ERROR" "Python 3 is not installed. Please install Python 3.11+ from https://www.python.org"
+        exit 1
+    fi
+    PYTHON_VERSION=$(python3 --version)
+    print_log "$GREEN" "✓" "Python found: $PYTHON_VERSION"
 
-# Check pip
-if ! command_exists pip3; then
-    print_log "$RED" "ERROR" "pip3 is not installed. Please install pip"
-    exit 1
+    if ! command_exists pip3; then
+        print_log "$RED" "ERROR" "pip3 is not installed. Please install pip"
+        exit 1
+    fi
+    PIP_VERSION=$(pip3 --version | cut -d' ' -f2)
+    print_log "$GREEN" "✓" "pip3 found: $PIP_VERSION"
+else
+    # On Railway, Python will be installed by nixpacks
+    print_log "$YELLOW" "INFO" "Running on Railway - Python will be installed via nixpacks.toml"
 fi
-PIP_VERSION=$(pip3 --version | cut -d' ' -f2)
-print_log "$GREEN" "✓" "pip3 found: $PIP_VERSION"
 
 echo ""
 print_log "$CYAN" "BUILD" "Starting build process..."
@@ -108,11 +113,41 @@ echo ""
 print_log "$BLUE" "STEP 3" "Setting up Python virtual environment..."
 cd backend
 
+# Detect Python command (try python3 first, then python)
+PYTHON_CMD=""
+if command_exists python3; then
+    PYTHON_CMD="python3"
+elif command_exists python; then
+    PYTHON_CMD="python"
+else
+    print_log "$RED" "ERROR" "Python not found. Please ensure Python 3.11+ is installed."
+    cd ..
+    exit 1
+fi
+
+# Detect pip command
+PIP_CMD=""
+if command_exists pip3; then
+    PIP_CMD="pip3"
+elif command_exists pip; then
+    PIP_CMD="pip"
+else
+    # Try python -m pip
+    if $PYTHON_CMD -m pip --version >/dev/null 2>&1; then
+        PIP_CMD="$PYTHON_CMD -m pip"
+    else
+        print_log "$RED" "ERROR" "pip not found. Please ensure pip is installed."
+        cd ..
+        exit 1
+    fi
+fi
+
 if [ ! -d "venv" ]; then
     print_log "$YELLOW" "INFO" "Creating Python virtual environment..."
-    python3 -m venv venv
+    $PYTHON_CMD -m venv venv
     if [ $? -ne 0 ]; then
         print_log "$RED" "ERROR" "Failed to create Python virtual environment"
+        cd ..
         exit 1
     fi
     print_log "$GREEN" "✓" "Python virtual environment created"
@@ -124,9 +159,12 @@ fi
 print_log "$YELLOW" "INFO" "Activating virtual environment..."
 source venv/bin/activate
 
+# Use venv's pip
+PIP_CMD="pip"
+
 # Upgrade pip
 print_log "$YELLOW" "INFO" "Upgrading pip..."
-pip install --upgrade pip --quiet
+$PIP_CMD install --upgrade pip --quiet
 if [ $? -ne 0 ]; then
     print_log "$YELLOW" "WARNING" "Failed to upgrade pip, continuing anyway..."
 fi
@@ -134,7 +172,7 @@ fi
 # Step 4: Install Python dependencies
 print_log "$BLUE" "STEP 4" "Installing Python dependencies..."
 print_log "$YELLOW" "INFO" "Installing from requirements.txt (this may take a few minutes)..."
-pip install -r requirements.txt
+$PIP_CMD install -r requirements.txt
 if [ $? -ne 0 ]; then
     print_log "$RED" "ERROR" "Failed to install Python dependencies"
     deactivate
