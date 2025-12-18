@@ -100,27 +100,39 @@ def filter_candidates(
     """
     filtered = []
     
+    # Track rejection reasons for logging
+    rejected_duration_min = 0
+    rejected_duration_max = 0
+    rejected_keyword = 0
+    rejected_entity = 0
+    passed = 0
+    
     for candidate in candidates:
         # Check duration limits
         if candidate.duration_seconds < config.limits.min_video_duration_seconds:
+            rejected_duration_min += 1
             continue
         if candidate.duration_seconds > config.limits.max_video_duration_seconds:
+            rejected_duration_max += 1
             continue
         
         # Check if title or description contains at least one keyword
-        title_lower = candidate.title.lower()
-        desc_lower = candidate.description.lower()
+        title_lower = candidate.title.lower() if candidate.title else ""
+        desc_lower = (candidate.description.lower() if candidate.description else "")
         text_to_search = f"{title_lower} {desc_lower}"
         
         has_keyword = any(keyword.lower() in text_to_search for keyword in keywords)
         
         if not has_keyword:
+            rejected_keyword += 1
+            if rejected_keyword <= 3:  # Log first 3 examples
+                logger.debug(f"  Rejected (no keyword): {candidate.title[:60] if candidate.title else 'No title'}... (keywords: {keywords[:3]}...)")
             continue
         
         # Check if entity name appears in title or description
         # For category-wide searches (like "hip hop"), entity_matched is the category keyword,
         # so we don't need to check for entity match (it's already in the search query)
-        entity_lower = candidate.entity_matched.lower()
+        entity_lower = (candidate.entity_matched.lower() if candidate.entity_matched else "")
         
         # Check if this is a category keyword search (entity_matched is a category keyword)
         # If so, we only need keyword match, not entity match
@@ -134,13 +146,27 @@ def filter_candidates(
         
         if not is_category_keyword:
             # For entity-specific searches, require entity name in title/description
-            has_entity = entity_lower in text_to_search
+            has_entity = entity_lower in text_to_search if entity_lower else False
             if not has_entity:
+                rejected_entity += 1
+                if rejected_entity <= 3:  # Log first 3 examples
+                    logger.debug(f"  Rejected (no entity match): {candidate.title[:60] if candidate.title else 'No title'}... (entity: {candidate.entity_matched})")
                 continue
         
+        passed += 1
         filtered.append(candidate)
     
+    # Log detailed filtering statistics
     logger.info(f"Filtered {len(candidates)} candidates to {len(filtered)}")
+    if len(candidates) > 0:
+        logger.info(f"  Rejection reasons:")
+        logger.info(f"    - Duration too short (<{config.limits.min_video_duration_seconds}s): {rejected_duration_min}")
+        logger.info(f"    - Duration too long (>{config.limits.max_video_duration_seconds}s): {rejected_duration_max}")
+        logger.info(f"    - No keyword match: {rejected_keyword}")
+        logger.info(f"    - No entity match: {rejected_entity}")
+        logger.info(f"    - Passed all filters: {passed}")
+        logger.info(f"  Required keywords: {keywords}")
+    
     return filtered
 
 

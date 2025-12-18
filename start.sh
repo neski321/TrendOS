@@ -63,6 +63,7 @@ cleanup() {
     # Also kill any remaining python3 processes that match our pattern
     # This catches processes that might have been spawned in subshells
     print_log "$YELLOW" "CLEANUP" "Killing any remaining Python processes..."
+    pkill -f "python3.*service.py" 2>/dev/null
     pkill -f "python3.*main.py" 2>/dev/null
     
     # Wait a moment for processes to die gracefully
@@ -102,12 +103,13 @@ NODE_PID=$!
 # Wait a moment for Node to start
 sleep 3
 
-# Start Python Trend Finder (using virtual environment)
-print_log "$GREEN" "PYTHON" "Starting Python Trend Finder..."
+# Start Python Trend Finder Service (using virtual environment)
+# This will check automation settings and only run scans if enabled
+print_log "$GREEN" "PYTHON" "Starting Python Trend Finder Service..."
 (
     cd backend
     source venv/bin/activate
-    exec python3 main.py
+    exec python3 service.py
 ) 2>&1 | handle_python_output &
 PYTHON_PGID=$!
 # Get the actual Python process PID (might be in a process group)

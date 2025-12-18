@@ -14,6 +14,11 @@ limits:
 discord:
   enabled: true
 
+automation:
+  auto_run_on_startup: false
+  scheduled_runs_enabled: false
+  scheduled_time: "14:00"  # 24-hour format (HH:MM), default 2:00 PM
+
 storage:
   # database_url will be loaded from DATABASE_URL environment variable
   # Format: postgresql://user:password@host:port/database

@@ -27,6 +27,7 @@ from clients.tiktok_client import TikTokClient
 from clients.google_trends_client import GoogleTrendsClient
 from core.scorer import filter_candidates, score_candidates, rank_by_category
 from core.storage import Storage
+from core.quota_tracker import QuotaTracker
 from notifiers.discord_notifier import DiscordNotifier
 
 # Configure logging
@@ -78,10 +79,16 @@ def main():
     
     logger.info("Configuration loaded successfully")
     
+    # Initialize quota tracker
+    quota_tracker = QuotaTracker(database_url)
+    quota_usage = quota_tracker.get_quota_usage()
+    logger.info(f"YouTube API quota: {quota_usage['used']}/{quota_usage['limit']} ({quota_usage['percentage']}%) used today")
+    
     # Initialize clients
     youtube_client = YouTubeClient(
         api_key=youtube_api_key,
-        rate_limit_delay=settings_config.api.youtube.rate_limit_delay_seconds
+        rate_limit_delay=settings_config.api.youtube.rate_limit_delay_seconds,
+        quota_tracker=quota_tracker
     )
     tiktok_client = TikTokClient()  # Stub for now
     google_trends_client = GoogleTrendsClient(
@@ -240,10 +247,23 @@ def main():
     for candidates in by_category.values():
         all_scored.extend(candidates)
     
-    # Save to database
-    logger.info(f"Saving {len(all_scored)} scored candidates to database...")
-    storage.save_run(run_date, all_scored)
-    logger.info(f"Successfully saved {len(all_scored)} candidates to database")
+    # Validate candidates before saving (so we know which ones are valid for Discord)
+    from core.validators import validate_candidates
+    valid_candidates, invalid_candidates = validate_candidates(all_scored)
+    
+    if invalid_candidates:
+        logger.warning(f"Skipping {len(invalid_candidates)} invalid candidates")
+        for candidate, errors in invalid_candidates[:5]:  # Log first 5
+            logger.warning(f"  - {candidate.candidate.video_id}: {', '.join(errors)}")
+    
+    # Save to database (only valid candidates)
+    logger.info(f"Saving {len(valid_candidates)} valid candidates to database (out of {len(all_scored)} total)...")
+    saved_count, error_count, invalid_count, saved_candidates_list = storage.save_run(run_date, valid_candidates)
+    logger.info(f"Successfully saved {saved_count} candidates to database")
+    if error_count > 0:
+        logger.warning(f"Failed to save {error_count} candidates due to errors")
+    if invalid_count > 0:
+        logger.warning(f"Skipped {invalid_count} invalid candidates")
     
     # Export CSV if enabled
     if settings_config.storage.export_csv:
@@ -251,8 +271,12 @@ def main():
         if csv_path:
             logger.info(f"CSV exported to {csv_path}")
     
-    # Rank by category for Discord
-    top_by_category = rank_by_category(all_scored, settings_config)
+    # Rank by category for Discord (use only candidates that were actually saved to database)
+    if saved_candidates_list:
+        top_by_category = rank_by_category(saved_candidates_list, settings_config)
+    else:
+        logger.warning("No candidates were saved to database, skipping Discord notification")
+        top_by_category = {}
     
     # Send Discord notification
     if discord_notifier:

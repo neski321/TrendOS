@@ -33,18 +33,20 @@ class VideoCandidate:
 class YouTubeClient:
     """Client for interacting with YouTube Data API v3."""
     
-    def __init__(self, api_key: str, rate_limit_delay: float = 1.0):
+    def __init__(self, api_key: str, rate_limit_delay: float = 1.0, quota_tracker=None):
         """
         Initialize YouTube client.
         
         Args:
             api_key: YouTube Data API v3 key
             rate_limit_delay: Delay in seconds between API calls to respect rate limits
+            quota_tracker: Optional QuotaTracker instance for quota management
         """
         self.api_key = api_key
         self.rate_limit_delay = rate_limit_delay
         self.youtube = build('youtube', 'v3', developerKey=api_key)
         self._last_request_time = 0.0
+        self.quota_tracker = quota_tracker
     
     def _throttle(self):
         """Throttle requests to respect rate limits."""
@@ -100,6 +102,17 @@ class YouTubeClient:
             while len(candidates) < max_results:
                 self._throttle()
                 
+                # Check quota before making request
+                if self.quota_tracker:
+                    required_units = 100  # search.list costs 100 units
+                    is_available, usage = self.quota_tracker.check_quota_available(required_units)
+                    if not is_available:
+                        logger.warning(
+                            f"Insufficient quota to continue search. "
+                            f"Used: {usage['used']}/{usage['limit']} ({usage['percentage']}%)"
+                        )
+                        break
+                
                 # Search for videos
                 search_response = self.youtube.search().list(
                     q=query,
@@ -110,6 +123,10 @@ class YouTubeClient:
                     maxResults=min(50, max_results - len(candidates)),
                     pageToken=next_page_token
                 ).execute()
+                
+                # Record quota usage
+                if self.quota_tracker:
+                    self.quota_tracker.record_quota_usage('search.list')
                 
                 if not search_response.get('items'):
                     break
@@ -122,10 +139,26 @@ class YouTubeClient:
                 
                 # Get detailed video information
                 self._throttle()
+                
+                # Check quota before making request
+                if self.quota_tracker:
+                    required_units = len(video_ids)  # videos.list costs 1 unit per video
+                    is_available, usage = self.quota_tracker.check_quota_available(required_units)
+                    if not is_available:
+                        logger.warning(
+                            f"Insufficient quota to fetch video details. "
+                            f"Used: {usage['used']}/{usage['limit']} ({usage['percentage']}%)"
+                        )
+                        break
+                
                 videos_response = self.youtube.videos().list(
                     part='statistics,contentDetails,snippet',
                     id=','.join(video_ids)
                 ).execute()
+                
+                # Record quota usage
+                if self.quota_tracker:
+                    self.quota_tracker.record_quota_usage('videos.list', units=len(video_ids))
                 
                 for video_item in videos_response.get('items', []):
                     try:
@@ -205,6 +238,17 @@ class YouTubeClient:
             while len(candidates) < max_results:
                 self._throttle()
                 
+                # Check quota before making request
+                if self.quota_tracker:
+                    required_units = 100  # search.list costs 100 units
+                    is_available, usage = self.quota_tracker.check_quota_available(required_units)
+                    if not is_available:
+                        logger.warning(
+                            f"Insufficient quota to continue category search. "
+                            f"Used: {usage['used']}/{usage['limit']} ({usage['percentage']}%)"
+                        )
+                        break
+                
                 # Search for videos
                 search_response = self.youtube.search().list(
                     q=query,
@@ -215,6 +259,10 @@ class YouTubeClient:
                     maxResults=min(50, max_results - len(candidates)),
                     pageToken=next_page_token
                 ).execute()
+                
+                # Record quota usage
+                if self.quota_tracker:
+                    self.quota_tracker.record_quota_usage('search.list')
                 
                 if not search_response.get('items'):
                     break
@@ -227,10 +275,26 @@ class YouTubeClient:
                 
                 # Get detailed video information
                 self._throttle()
+                
+                # Check quota before making request
+                if self.quota_tracker:
+                    required_units = len(video_ids)  # videos.list costs 1 unit per video
+                    is_available, usage = self.quota_tracker.check_quota_available(required_units)
+                    if not is_available:
+                        logger.warning(
+                            f"Insufficient quota to fetch video details. "
+                            f"Used: {usage['used']}/{usage['limit']} ({usage['percentage']}%)"
+                        )
+                        break
+                
                 videos_response = self.youtube.videos().list(
                     part='statistics,contentDetails,snippet',
                     id=','.join(video_ids)
                 ).execute()
+                
+                # Record quota usage
+                if self.quota_tracker:
+                    self.quota_tracker.record_quota_usage('videos.list', units=len(video_ids))
                 
                 for video_item in videos_response.get('items', []):
                     try:

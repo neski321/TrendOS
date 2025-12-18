@@ -17,6 +17,16 @@ export default function Settings() {
   const { data: entities, isLoading: entitiesLoading } = useEntities();
   const { mutate: updateEntities, isPending: isSavingEntities } = useUpdateEntities();
 
+  // Local state for entities (editable)
+  const [entitiesData, setEntitiesData] = useState<EntitiesConfig | null>(null);
+
+  // Load entities into local state when fetched
+  useEffect(() => {
+    if (entities) {
+      setEntitiesData(entities);
+    }
+  }, [entities]);
+
   // Form state
   const [formData, setFormData] = useState({
     scoring: {
@@ -34,6 +44,11 @@ export default function Settings() {
     },
     discord: {
       enabled: true,
+    },
+    automation: {
+      auto_run_on_startup: false,
+      scheduled_runs_enabled: false,
+      scheduled_time: "14:00",
     },
   });
 
@@ -56,6 +71,11 @@ export default function Settings() {
         },
         discord: {
           enabled: settings.discord?.enabled ?? true,
+        },
+        automation: {
+          auto_run_on_startup: settings.automation?.auto_run_on_startup ?? false,
+          scheduled_runs_enabled: settings.automation?.scheduled_runs_enabled ?? false,
+          scheduled_time: settings.automation?.scheduled_time ?? "14:00",
         },
       });
     }
@@ -84,6 +104,90 @@ export default function Settings() {
       ...prev,
       discord: { ...prev.discord, [field]: value }
     }));
+  };
+
+  const updateAutomation = (field: string, value: boolean | string) => {
+    setFormData(prev => ({
+      ...prev,
+      automation: { ...prev.automation, [field]: value }
+    }));
+  };
+
+  // Entity management functions
+  const addEntity = (category: 'hip_hop' | 'nba' | 'celebrity', entityName: string) => {
+    if (!entityName.trim() || !entitiesData) return;
+    
+    setEntitiesData(prev => {
+      if (!prev) return prev;
+      const newEntities = { ...prev };
+      const categoryEntities = [...newEntities.categories[category].entities];
+      if (!categoryEntities.includes(entityName.trim())) {
+        categoryEntities.push(entityName.trim());
+        newEntities.categories[category] = {
+          ...newEntities.categories[category],
+          entities: categoryEntities
+        };
+        // Auto-save to database
+        updateEntities(newEntities);
+      }
+      return newEntities;
+    });
+  };
+
+  const removeEntity = (category: 'hip_hop' | 'nba' | 'celebrity', index: number) => {
+    if (!entitiesData) return;
+    
+    setEntitiesData(prev => {
+      if (!prev) return prev;
+      const newEntities = { ...prev };
+      const categoryEntities = [...newEntities.categories[category].entities];
+      categoryEntities.splice(index, 1);
+      newEntities.categories[category] = {
+        ...newEntities.categories[category],
+        entities: categoryEntities
+      };
+      // Auto-save to database
+      updateEntities(newEntities);
+      return newEntities;
+    });
+  };
+
+  const addChannel = (category: 'hip_hop' | 'nba' | 'celebrity', channelName: string) => {
+    if (!channelName.trim() || !entitiesData) return;
+    
+    setEntitiesData(prev => {
+      if (!prev) return prev;
+      const newEntities = { ...prev };
+      const categoryChannels = [...newEntities.categories[category].channels];
+      if (!categoryChannels.includes(channelName.trim())) {
+        categoryChannels.push(channelName.trim());
+        newEntities.categories[category] = {
+          ...newEntities.categories[category],
+          channels: categoryChannels
+        };
+        // Auto-save to database
+        updateEntities(newEntities);
+      }
+      return newEntities;
+    });
+  };
+
+  const removeChannel = (category: 'hip_hop' | 'nba' | 'celebrity', index: number) => {
+    if (!entitiesData) return;
+    
+    setEntitiesData(prev => {
+      if (!prev) return prev;
+      const newEntities = { ...prev };
+      const categoryChannels = [...newEntities.categories[category].channels];
+      categoryChannels.splice(index, 1);
+      newEntities.categories[category] = {
+        ...newEntities.categories[category],
+        channels: categoryChannels
+      };
+      // Auto-save to database
+      updateEntities(newEntities);
+      return newEntities;
+    });
   };
 
   if (settingsLoading) {
@@ -136,7 +240,7 @@ export default function Settings() {
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                 </div>
-              ) : entities ? (
+              ) : entitiesData ? (
                 <>
                   {/* Hip Hop Category */}
                   <div className="space-y-4 p-4 border border-border rounded-lg">
@@ -145,7 +249,7 @@ export default function Settings() {
                       <div className="space-y-2">
                         <Label>Entities</Label>
                         <div className="space-y-2">
-                          {entities.categories.hip_hop.entities.map((entity, idx) => (
+                          {entitiesData.categories.hip_hop.entities.map((entity, idx) => (
                             <div key={idx} className="flex items-center gap-2">
                               <Input value={entity} readOnly className="flex-1" />
                               <Button
@@ -187,7 +291,7 @@ export default function Settings() {
                       <div className="space-y-2">
                         <Label>Channels</Label>
                         <div className="space-y-2">
-                          {entities.categories.hip_hop.channels.map((channel, idx) => (
+                          {entitiesData.categories.hip_hop.channels.map((channel, idx) => (
                             <div key={idx} className="flex items-center gap-2">
                               <Input value={channel} readOnly className="flex-1" />
                               <Button
@@ -238,7 +342,7 @@ export default function Settings() {
                       <div className="space-y-2">
                         <Label>Entities</Label>
                         <div className="space-y-2">
-                          {entities.categories.nba.entities.map((entity, idx) => (
+                          {entitiesData.categories.nba.entities.map((entity, idx) => (
                             <div key={idx} className="flex items-center gap-2">
                               <Input value={entity} readOnly className="flex-1" />
                               <Button
@@ -280,7 +384,7 @@ export default function Settings() {
                       <div className="space-y-2">
                         <Label>Channels</Label>
                         <div className="space-y-2">
-                          {entities.categories.nba.channels.map((channel, idx) => (
+                          {entitiesData.categories.nba.channels.map((channel, idx) => (
                             <div key={idx} className="flex items-center gap-2">
                               <Input value={channel} readOnly className="flex-1" />
                               <Button
@@ -331,7 +435,7 @@ export default function Settings() {
                       <div className="space-y-2">
                         <Label>Entities</Label>
                         <div className="space-y-2">
-                          {entities.categories.celebrity.entities.map((entity, idx) => (
+                          {entitiesData.categories.celebrity.entities.map((entity, idx) => (
                             <div key={idx} className="flex items-center gap-2">
                               <Input value={entity} readOnly className="flex-1" />
                               <Button
@@ -373,7 +477,7 @@ export default function Settings() {
                       <div className="space-y-2">
                         <Label>Channels</Label>
                         <div className="space-y-2">
-                          {entities.categories.celebrity.channels.map((channel, idx) => (
+                          {entitiesData.categories.celebrity.channels.map((channel, idx) => (
                             <div key={idx} className="flex items-center gap-2">
                               <Input value={channel} readOnly className="flex-1" />
                               <Button
@@ -538,6 +642,59 @@ export default function Settings() {
                     <p className="text-xs text-muted-foreground">Top candidates sent to Discord per category</p>
                  </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Automation Configuration */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Automation</CardTitle>
+              <CardDescription>Configure automatic scanning and scheduled runs.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-muted/20">
+                <div className="space-y-0.5">
+                  <Label className="text-base">Auto Run on Startup</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Automatically run a scan when the application starts (applies to production builds).
+                  </p>
+                </div>
+                <Switch 
+                  checked={formData.automation.auto_run_on_startup}
+                  onCheckedChange={(checked) => updateAutomation('auto_run_on_startup', checked)}
+                />
+              </div>
+
+              <Separator />
+
+              <div className="flex items-center justify-between p-4 border border-border rounded-lg bg-muted/20">
+                <div className="space-y-0.5">
+                  <Label className="text-base">Scheduled Runs</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Enable scheduled scans at a specific time each day. The backend will track and execute runs automatically.
+                  </p>
+                </div>
+                <Switch 
+                  checked={formData.automation.scheduled_runs_enabled}
+                  onCheckedChange={(checked) => updateAutomation('scheduled_runs_enabled', checked)}
+                />
+              </div>
+
+              {formData.automation.scheduled_runs_enabled && (
+                <div className="space-y-2 p-4 border border-border rounded-lg">
+                  <Label>Scheduled Time (24-hour format)</Label>
+                  <Input
+                    type="time"
+                    value={formData.automation.scheduled_time}
+                    onChange={(e) => updateAutomation('scheduled_time', e.target.value)}
+                    className="font-mono w-32"
+                    step="60"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    The scan will run at this time each day (server timezone). Format: HH:MM (e.g., 14:00 for 2:00 PM).
+                  </p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
