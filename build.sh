@@ -67,24 +67,26 @@ echo ""
 print_log "$CYAN" "BUILD" "Starting build process..."
 echo ""
 
-# Step 1: Check for .env file
+# Step 1: Check for .env file (skip on Railway - uses environment variables)
 print_log "$BLUE" "STEP 1" "Checking environment configuration..."
-if [ ! -f "backend/.env" ]; then
-    print_log "$YELLOW" "WARNING" ".env file not found in backend/"
-    print_log "$YELLOW" "INFO" "Please create backend/.env with the following variables:"
-    echo "  - YOUTUBE_API_KEY"
-    echo "  - DATABASE_URL"
-    echo "  - DISCORD_WEBHOOK_URL (optional)"
-    echo "  - GOOGLE_TRENDS_API_KEY (optional)"
-    echo ""
-    read -p "Continue anyway? (y/N) " -n 1 -r
-    echo ""
-    if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        print_log "$RED" "BUILD" "Build cancelled. Please create backend/.env first."
-        exit 1
+if [ -z "$RAILWAY_ENVIRONMENT" ] && [ -z "$RAILWAY_PROJECT_ID" ] && [ -z "$CI" ]; then
+    # Only check for .env file in local development
+    if [ ! -f "backend/.env" ]; then
+        print_log "$YELLOW" "WARNING" ".env file not found in backend/"
+        print_log "$YELLOW" "INFO" "For local development, create backend/.env with:"
+        echo "  - YOUTUBE_API_KEY"
+        echo "  - DATABASE_URL"
+        echo "  - DISCORD_WEBHOOK_URL (optional)"
+        echo "  - GOOGLE_TRENDS_API_KEY (optional)"
+        echo ""
+        print_log "$YELLOW" "INFO" "On Railway, these are set as environment variables in the dashboard."
+        print_log "$YELLOW" "INFO" "Continuing build (you can set env vars later)..."
+    else
+        print_log "$GREEN" "✓" "backend/.env file found"
     fi
 else
-    print_log "$GREEN" "✓" "backend/.env file found"
+    # On Railway/CI, environment variables are set in the platform
+    print_log "$YELLOW" "INFO" "Running on Railway/CI - using environment variables (no .env file needed)"
 fi
 echo ""
 
@@ -186,36 +188,38 @@ deactivate
 cd ..
 echo ""
 
-# Step 5: Run database migrations (optional)
+# Step 5: Run database migrations (optional - only if DATABASE_URL is available)
 print_log "$BLUE" "STEP 5" "Running database migrations..."
-if [ -f "backend/.env" ]; then
-    # Check if DATABASE_URL is set
+# Check if DATABASE_URL is set as environment variable (Railway/CI) or in .env file (local)
+if [ ! -z "$DATABASE_URL" ]; then
+    # DATABASE_URL is already set as environment variable (Railway/CI)
+    print_log "$YELLOW" "INFO" "DATABASE_URL found in environment, running migrations..."
+elif [ -f "backend/.env" ]; then
+    # Try to load from .env file (local development)
     source backend/.env 2>/dev/null || true
     if [ -z "$DATABASE_URL" ]; then
         # Try to load from .env file directly
         DATABASE_URL=$(grep "^DATABASE_URL=" backend/.env 2>/dev/null | cut -d'=' -f2- | tr -d '"' | tr -d "'")
     fi
+fi
+
+if [ ! -z "$DATABASE_URL" ]; then
+    print_log "$YELLOW" "INFO" "Running database migrations..."
+    cd backend
+    source venv/bin/activate
+    python3 migrate.py
+    MIGRATION_EXIT_CODE=$?
+    deactivate
+    cd ..
     
-    if [ ! -z "$DATABASE_URL" ]; then
-        print_log "$YELLOW" "INFO" "Running database migrations..."
-        cd backend
-        source venv/bin/activate
-        python3 migrate.py
-        MIGRATION_EXIT_CODE=$?
-        deactivate
-        cd ..
-        
-        if [ $MIGRATION_EXIT_CODE -eq 0 ]; then
-            print_log "$GREEN" "✓" "Database migrations completed"
-        else
-            print_log "$YELLOW" "WARNING" "Database migrations had issues (this is OK if database is already up to date)"
-        fi
+    if [ $MIGRATION_EXIT_CODE -eq 0 ]; then
+        print_log "$GREEN" "✓" "Database migrations completed"
     else
-        print_log "$YELLOW" "WARNING" "DATABASE_URL not found in backend/.env, skipping migrations"
-        print_log "$YELLOW" "INFO" "You can run migrations manually later with: cd backend && source venv/bin/activate && python3 migrate.py"
+        print_log "$YELLOW" "WARNING" "Database migrations had issues (this is OK if database is already up to date)"
     fi
 else
-    print_log "$YELLOW" "WARNING" "backend/.env not found, skipping migrations"
+    print_log "$YELLOW" "WARNING" "DATABASE_URL not found, skipping migrations"
+    print_log "$YELLOW" "INFO" "Migrations will run automatically on first app startup if DATABASE_URL is set"
 fi
 echo ""
 
