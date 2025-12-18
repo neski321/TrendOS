@@ -14,10 +14,9 @@ cmds = [
 
 [phases.build]
 cmds = [
-  "npm run check || true",
-  "npm run build"
+  "npm run check || true"
 ]
 
 [start]
-cmd = "npm start"
+cmd = "NODE_ENV=development tsx server/index.ts"
 
