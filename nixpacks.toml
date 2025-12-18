@@ -14,9 +14,10 @@ cmds = [
 
 [phases.build]
 cmds = [
-  "npm run check || true"
+  "npm run check || true",
+  "npm run build"
 ]
 
 [start]
-cmd = "npm run dev"
+cmd = "npm start"
 
