@@ -1,0 +1,22 @@
+# Nixpacks configuration for Railway
+# This tells Railway to install both Node.js and Python
+
+[phases.setup]
+nixPkgs = ["nodejs-18_x", "python311"]
+
+[phases.install]
+cmds = [
+  "npm install",
+  "cd backend && python3 -m venv venv",
+  "cd backend && source venv/bin/activate && pip install --upgrade pip",
+  "cd backend && source venv/bin/activate && pip install -r requirements.txt"
+]
+
+[phases.build]
+cmds = [
+  "npm run check || true"
+]
+
+[start]
+cmd = "npm run dev"
+
