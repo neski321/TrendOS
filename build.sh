@@ -42,9 +42,14 @@ fi
 NPM_VERSION=$(npm --version)
 print_log "$GREEN" "✓" "npm found: $NPM_VERSION"
 
-# Check Python (skip on Railway - it will be installed via nixpacks)
-if [ -z "$RAILWAY_ENVIRONMENT" ] && [ -z "$RAILWAY_PROJECT_ID" ]; then
-    # Only check Python if not on Railway (Railway uses nixpacks.toml)
+# Check Python (skip on Railway/CI - it will be installed via nixpacks)
+# Check if nixpacks.toml exists (indicates Railway/nixpacks environment)
+if [ -f "nixpacks.toml" ] || [ ! -z "$RAILWAY_ENVIRONMENT" ] || [ ! -z "$RAILWAY_PROJECT_ID" ] || [ ! -z "$RAILWAY_SERVICE_NAME" ] || [ ! -z "$CI" ] || [ ! -z "$NIXPACKS" ]; then
+    # On Railway/CI, Python will be installed by nixpacks
+    print_log "$YELLOW" "INFO" "Running on Railway/CI - Python will be installed via nixpacks.toml"
+    print_log "$YELLOW" "INFO" "Skipping Python prerequisite check (nixpacks handles installation)"
+else
+    # Only check Python if not on Railway/CI (Railway uses nixpacks.toml)
     if ! command_exists python3; then
         print_log "$RED" "ERROR" "Python 3 is not installed. Please install Python 3.11+ from https://www.python.org"
         exit 1
@@ -58,9 +63,6 @@ if [ -z "$RAILWAY_ENVIRONMENT" ] && [ -z "$RAILWAY_PROJECT_ID" ]; then
     fi
     PIP_VERSION=$(pip3 --version | cut -d' ' -f2)
     print_log "$GREEN" "✓" "pip3 found: $PIP_VERSION"
-else
-    # On Railway, Python will be installed by nixpacks
-    print_log "$YELLOW" "INFO" "Running on Railway - Python will be installed via nixpacks.toml"
 fi
 
 echo ""
@@ -113,7 +115,7 @@ echo ""
 
 # Step 3: Set up Python virtual environment
 # On Railway, nixpacks.toml handles Python setup, so we skip this step
-if [ ! -z "$RAILWAY_ENVIRONMENT" ] || [ ! -z "$RAILWAY_PROJECT_ID" ] || [ ! -z "$CI" ]; then
+if [ ! -z "$RAILWAY_ENVIRONMENT" ] || [ ! -z "$RAILWAY_PROJECT_ID" ] || [ ! -z "$RAILWAY_SERVICE_NAME" ] || [ ! -z "$CI" ] || [ ! -z "$NIXPACKS" ]; then
     print_log "$YELLOW" "INFO" "Running on Railway/CI - Python setup is handled by nixpacks.toml"
     print_log "$YELLOW" "INFO" "Skipping Python virtual environment setup (nixpacks will handle it)"
     print_log "$GREEN" "✓" "Python setup deferred to nixpacks.toml"
