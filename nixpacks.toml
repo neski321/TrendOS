@@ -30,5 +30,5 @@ cmds = [
 ]
 
 [start]
-cmd = "cd /app && NODE_ENV=production node dist/index.cjs"
+cmd = "./start-production.sh"
 
