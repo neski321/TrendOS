@@ -392,9 +392,34 @@ export function useTriggerScan() {
   });
 }
 
+// Settings interface
+export interface Settings {
+  scoring: {
+    recency_weight: number;
+    engagement_weight: number;
+    velocity_weight: number;
+    cross_platform_weight: number;
+    entity_priority_weight: number;
+  };
+  limits: {
+    max_candidates_per_category: number;
+    top_n_per_category_for_discord: number;
+    min_video_duration_seconds: number;
+    max_video_duration_seconds: number;
+  };
+  discord: {
+    enabled: boolean;
+  };
+  automation: {
+    auto_run_on_startup: boolean;
+    scheduled_runs_enabled: boolean;
+    scheduled_time: string; // Format: "HH:MM" (24-hour format)
+  };
+}
+
 // Get settings
 export function useSettings() {
-  return useQuery<any>({
+  return useQuery<Settings>({
     queryKey: ["/api/settings"],
     queryFn: async () => {
       const res = await fetch("/api/settings");
@@ -403,6 +428,8 @@ export function useSettings() {
       }
       return res.json();
     },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    cacheTime: 10 * 60 * 1000, // 10 minutes
   });
 }
 
@@ -411,7 +438,7 @@ export function useUpdateSettings() {
   const queryClient = useQueryClient();
   
   return useMutation({
-    mutationFn: async (updates: any) => {
+    mutationFn: async (updates: Partial<Settings>) => {
       const res = await fetch("/api/settings", {
         method: "POST",
         headers: {

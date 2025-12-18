@@ -7,7 +7,7 @@ from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 logger = logging.getLogger(__name__)
 
 # Current schema version
-CURRENT_SCHEMA_VERSION = 7
+CURRENT_SCHEMA_VERSION = 8
 
 
 def get_schema_version(cursor) -> int:
@@ -314,6 +314,26 @@ def get_migrations() -> List[Tuple[int, str, str]]:
             
             -- Note: The Python backend will call this function periodically
             -- We could also set up a cron job or scheduled task to run this
+            """
+        ),
+        (
+            8,
+            "Drop run_timestamp column if it exists (not part of intended schema)",
+            """
+            DO $$ 
+            BEGIN
+                -- Drop run_timestamp column if it exists (it's not part of our schema)
+                IF EXISTS (
+                    SELECT 1 FROM information_schema.columns 
+                    WHERE table_name = 'trending_videos' AND column_name = 'run_timestamp'
+                ) THEN
+                    ALTER TABLE trending_videos 
+                    DROP COLUMN run_timestamp;
+                    RAISE NOTICE 'Dropped run_timestamp column from trending_videos table';
+                ELSE
+                    RAISE NOTICE 'run_timestamp column does not exist, skipping';
+                END IF;
+            END $$;
             """
         ),
     ]

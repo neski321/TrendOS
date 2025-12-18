@@ -4,6 +4,8 @@ import psycopg2
 from datetime import datetime, timedelta
 from typing import Optional
 
+logger = logging.getLogger(__name__)
+
 
 class DatabaseLogHandler(logging.Handler):
     """Custom logging handler that writes logs to PostgreSQL database."""

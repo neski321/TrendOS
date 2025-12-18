@@ -25,10 +25,10 @@ function log(color, prefix, message) {
 }
 
 // Check if Python .env exists
-const pythonEnvPath = path.join(__dirname, 'clip_trend_finder', '.env');
+const pythonEnvPath = path.join(__dirname, 'backend', '.env');
 if (!fs.existsSync(pythonEnvPath)) {
-  log(colors.red, 'ERROR', '.env file not found in clip_trend_finder/');
-  log(colors.yellow, 'INFO', 'Please copy clip_trend_finder/.env.example to clip_trend_finder/.env');
+  log(colors.red, 'ERROR', '.env file not found in backend/');
+  log(colors.yellow, 'INFO', 'Please copy backend/.env.example to backend/.env');
   process.exit(1);
 }
 
@@ -59,13 +59,13 @@ nodeProcess.stderr.on('data', (data) => {
 
 // Wait a moment for Node to start, then start Python
 setTimeout(() => {
-  log(colors.green, 'PYTHON', 'Starting Python Trend Finder...');
+  log(colors.green, 'PYTHON', 'Starting Python Trend Finder Service (checks automation settings)...');
   const pythonPath = process.platform === 'win32' 
-    ? path.join(__dirname, 'clip_trend_finder', 'venv', 'Scripts', 'python.exe')
-    : path.join(__dirname, 'clip_trend_finder', 'venv', 'bin', 'python3');
+    ? path.join(__dirname, 'backend', 'venv', 'Scripts', 'python.exe')
+    : path.join(__dirname, 'backend', 'venv', 'bin', 'python3');
   
-  const pythonProcess = spawn(pythonPath, ['main.py'], {
-    cwd: path.join(__dirname, 'clip_trend_finder'),
+  const pythonProcess = spawn(pythonPath, ['service.py'], {
+    cwd: path.join(__dirname, 'backend'),
     stdio: ['inherit', 'pipe', 'pipe'],
     shell: false,
   });

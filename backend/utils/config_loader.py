@@ -55,6 +55,14 @@ class DiscordConfig:
 
 
 @dataclass
+class AutomationConfig:
+    """Automation configuration."""
+    auto_run_on_startup: bool
+    scheduled_runs_enabled: bool
+    scheduled_time: str  # Format: "HH:MM" in 24-hour format (e.g., "14:30")
+
+
+@dataclass
 class StorageConfig:
     """Storage configuration."""
     database_url: str
@@ -81,6 +89,7 @@ class SettingsConfig:
     scoring: ScoringConfig
     limits: LimitsConfig
     discord: DiscordConfig
+    automation: AutomationConfig
     storage: StorageConfig
     api: APIConfig
 
@@ -312,6 +321,7 @@ def load_settings_config(config_dir: Path, database_url: Optional[str] = None) -
             "scoring": db_settings.get("scoring", {}),
             "limits": db_settings.get("limits", {}),
             "discord": db_settings.get("discord", {}),
+            "automation": db_settings.get("automation", {}),
             "storage": db_settings.get("storage", {}),
             "api": db_settings.get("api", {}),
         }
@@ -319,7 +329,7 @@ def load_settings_config(config_dir: Path, database_url: Optional[str] = None) -
         settings_path = config_dir / "settings.yaml"
         if settings_path.exists():
             yaml_fallback = load_yaml(settings_path)
-            for key in ["scoring", "limits", "discord", "storage", "api"]:
+            for key in ["scoring", "limits", "discord", "automation", "storage", "api"]:
                 if key not in yaml_data or not yaml_data[key]:
                     yaml_data[key] = yaml_fallback.get(key, {})
     
@@ -351,6 +361,13 @@ def load_settings_config(config_dir: Path, database_url: Optional[str] = None) -
         enabled=discord_data.get("enabled", True)
     )
     
+    automation_data = yaml_data.get("automation", {})
+    automation = AutomationConfig(
+        auto_run_on_startup=automation_data.get("auto_run_on_startup", False),
+        scheduled_runs_enabled=automation_data.get("scheduled_runs_enabled", False),
+        scheduled_time=automation_data.get("scheduled_time", "14:00")  # Default 2 PM
+    )
+    
     storage_data = yaml_data.get("storage", {})
     storage = StorageConfig(
         database_url=storage_data.get("database_url", ""),  # Will be overridden by env var
@@ -371,6 +388,7 @@ def load_settings_config(config_dir: Path, database_url: Optional[str] = None) -
         scoring=scoring,
         limits=limits,
         discord=discord,
+        automation=automation,
         storage=storage,
         api=api
     )

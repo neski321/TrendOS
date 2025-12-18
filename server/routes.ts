@@ -33,21 +33,78 @@ export async function registerRoutes(
   // Trigger scan endpoint
   app.post("/api/scan/trigger", async (_req, res) => {
     try {
-      // This would trigger the Python scanner
-      // For now, we'll just return success
-      // In production, you might want to:
-      // 1. Queue a job
-      // 2. Call the Python script
-      // 3. Use a message queue
+      const { spawn } = await import("child_process");
+      const path = await import("path");
+      const fs = await import("fs");
       
-      res.json({ 
-        success: true, 
-        message: "Scan triggered successfully",
-        timestamp: new Date().toISOString()
+      // Check if Python script exists
+      const backendDir = path.resolve(process.cwd(), "backend");
+      const pythonScript = path.join(backendDir, "main.py");
+      const venvPython = path.join(backendDir, "venv", "bin", "python3");
+      
+      if (!fs.existsSync(pythonScript)) {
+        return res.status(500).json({
+          success: false,
+          error: "Python scanner script not found"
+        });
+      }
+      
+      // Use venv Python if available, otherwise use system python3
+      const pythonExec = fs.existsSync(venvPython) ? venvPython : "python3";
+      
+      // Spawn Python process (non-blocking)
+      const pythonProcess = spawn(pythonExec, ["main.py"], {
+        cwd: backendDir,
+        env: {
+          ...process.env,
+          // Ensure Python can access environment variables
+          PATH: process.env.PATH || "",
+        },
+        stdio: ["ignore", "pipe", "pipe"], // Ignore stdin, capture stdout/stderr
       });
+      
+      let stdout = "";
+      let stderr = "";
+      
+      pythonProcess.stdout?.on("data", (data) => {
+        stdout += data.toString();
+      });
+      
+      pythonProcess.stderr?.on("data", (data) => {
+        stderr += data.toString();
+      });
+      
+      // Don't wait for process to complete - return immediately
+      pythonProcess.on("error", (error) => {
+        console.error("Error spawning Python process:", error);
+      });
+      
+      // Store process info for potential status checking
+      const processId = pythonProcess.pid;
+      
+      res.json({
+        success: true,
+        message: "Scan triggered successfully",
+        timestamp: new Date().toISOString(),
+        processId: processId,
+        note: "Scan is running in the background. Check logs for progress."
+      });
+      
+      // Log completion in background (don't block response)
+      pythonProcess.on("exit", (code) => {
+        if (code === 0) {
+          console.log(`[SCAN] Scan completed successfully (PID: ${processId})`);
+        } else {
+          console.error(`[SCAN] Scan failed with code ${code} (PID: ${processId})`);
+          if (stderr) {
+            console.error(`[SCAN] Error output: ${stderr.substring(0, 500)}`);
+          }
+        }
+      });
+      
     } catch (error) {
       console.error("Error triggering scan:", error);
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
         error: error instanceof Error ? error.message : "Unknown error"
       });

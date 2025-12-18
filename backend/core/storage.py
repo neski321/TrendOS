@@ -5,6 +5,7 @@ from pathlib import Path
 from datetime import date, datetime
 from typing import List, Optional, Set
 import psycopg2
+from psycopg2 import pool
 from psycopg2.extras import execute_values
 from psycopg2 import sql
 import re
@@ -12,6 +13,7 @@ import re
 from clients.youtube_client import VideoCandidate
 from core.scorer import ScoredCandidate
 from core.migrations import run_migrations
+from core.validators import validate_candidates
 from utils.time_utils import format_iso_datetime
 
 logger = logging.getLogger(__name__)
@@ -20,6 +22,7 @@ logger = logging.getLogger(__name__)
 SCHEMA_COLUMNS = {
     'created_at': 'TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP',
     'updated_at': 'TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP',
+    'channel_title': 'TEXT',  # Added in Migration 4, but auto-fixable if missing
     # Add other optional columns here if needed in the future
 }
 
@@ -27,21 +30,64 @@ SCHEMA_COLUMNS = {
 class Storage:
     """Storage manager for PostgreSQL database and CSV exports."""
     
-    def __init__(self, database_url: str):
+    def __init__(self, database_url: str, min_connections: int = 1, max_connections: int = 5):
         """
-        Initialize storage.
+        Initialize storage with connection pooling.
         
         Args:
             database_url: PostgreSQL connection string (e.g., postgresql://user:pass@host/db)
+            min_connections: Minimum number of connections in pool
+            max_connections: Maximum number of connections in pool
         """
         self.database_url = database_url
         # Run migrations first to ensure schema is up to date
         run_migrations(database_url)
+        
+        # Create connection pool
+        try:
+            self.connection_pool = pool.SimpleConnectionPool(
+                min_connections,
+                max_connections,
+                database_url
+            )
+            if self.connection_pool:
+                logger.info(f"Connection pool created: {min_connections}-{max_connections} connections")
+            else:
+                logger.error("Failed to create connection pool")
+                raise Exception("Failed to create connection pool")
+        except Exception as e:
+            logger.error(f"Error creating connection pool: {e}")
+            raise
+        
         self.init_db()
     
     def _get_connection(self):
-        """Get a database connection."""
-        return psycopg2.connect(self.database_url)
+        """Get a database connection from the pool."""
+        try:
+            return self.connection_pool.getconn()
+        except Exception as e:
+            logger.error(f"Error getting connection from pool: {e}")
+            # Fallback to direct connection if pool fails
+            logger.warning("Falling back to direct connection")
+            return psycopg2.connect(self.database_url)
+    
+    def _return_connection(self, conn):
+        """Return a connection to the pool."""
+        try:
+            if self.connection_pool:
+                self.connection_pool.putconn(conn)
+        except Exception as e:
+            logger.error(f"Error returning connection to pool: {e}")
+            try:
+                conn.close()
+            except Exception:
+                pass
+    
+    def close(self):
+        """Close all connections in the pool."""
+        if hasattr(self, 'connection_pool') and self.connection_pool:
+            self.connection_pool.closeall()
+            logger.info("Connection pool closed")
     
     def init_db(self):
         """
@@ -113,7 +159,7 @@ class Storage:
             raise
         finally:
             cursor.close()
-            conn.close()
+            self._return_connection(conn)
     
     def save_run(
         self,
@@ -125,12 +171,28 @@ class Storage:
         
         Args:
             run_date: Date of the run
-            scored_candidates: List of scored candidates to save
+            scored_candidates: List of scored candidates to save (should be pre-validated)
+            
+        Returns:
+            Tuple of (saved_count, error_count, invalid_count, saved_candidates_list)
         """
+        # Validate candidates before saving (if not already validated)
+        # Note: main.py now validates before calling save_run, but we keep this as a safety check
+        valid_candidates, invalid_candidates = validate_candidates(scored_candidates)
+        
+        if invalid_candidates:
+            logger.warning(f"Skipping {len(invalid_candidates)} invalid candidates")
+            for candidate, errors in invalid_candidates[:5]:  # Log first 5
+                logger.warning(f"  - {candidate.candidate.video_id}: {', '.join(errors)}")
+        
+        if not valid_candidates:
+            logger.warning("No valid candidates to save")
+            return 0, 0, len(invalid_candidates), []
+        
         conn = self._get_connection()
         cursor = conn.cursor()
         
-        # Check if updated_at column exists once (not in the loop for performance)
+        # Check if updated_at and channel_title columns exist once (not in the loop for performance)
         cursor.execute("""
             SELECT EXISTS (
                 SELECT 1 FROM information_schema.columns 
@@ -139,34 +201,41 @@ class Storage:
         """)
         has_updated_at = cursor.fetchone()[0]
         
+        cursor.execute("""
+            SELECT EXISTS (
+                SELECT 1 FROM information_schema.columns 
+                WHERE table_name = 'trending_videos' AND column_name = 'channel_title'
+            )
+        """)
+        has_channel_title = cursor.fetchone()[0]
+        
         # Track if we've already tried to auto-fix columns in this session
         # to avoid infinite loops
         if not hasattr(self, '_auto_fix_attempted'):
             self._auto_fix_attempted = set()
         
         # Build the update clause once based on column existence
+        update_parts = [
+            "run_date = EXCLUDED.run_date",
+            "score = EXCLUDED.score",
+            "views = EXCLUDED.views",
+            "likes = EXCLUDED.likes",
+            "comments = EXCLUDED.comments"
+        ]
+        
+        if has_channel_title:
+            update_parts.append("channel_title = EXCLUDED.channel_title")
+        
         if has_updated_at:
-            update_clause = """
-                run_date = EXCLUDED.run_date,
-                score = EXCLUDED.score,
-                views = EXCLUDED.views,
-                likes = EXCLUDED.likes,
-                comments = EXCLUDED.comments,
-                updated_at = CURRENT_TIMESTAMP
-            """
-        else:
-            update_clause = """
-                run_date = EXCLUDED.run_date,
-                score = EXCLUDED.score,
-                views = EXCLUDED.views,
-                likes = EXCLUDED.likes,
-                comments = EXCLUDED.comments
-            """
+            update_parts.append("updated_at = CURRENT_TIMESTAMP")
+        
+        update_clause = ",\n                    ".join(update_parts)
         
         saved_count = 0
         error_count = 0
+        saved_candidates_list = []  # Initialize list of successfully saved candidates
         
-        for scored in scored_candidates:
+        for scored in valid_candidates:
             candidate = scored.candidate
             try:
                 # Convert numpy types to native Python types to avoid PostgreSQL errors
@@ -239,6 +308,7 @@ class Storage:
                         candidate.thumbnail_url or ""
                     ))
                 saved_count += 1
+                saved_candidates_list.append(scored)  # Track successfully saved candidate
             except Exception as e:
                 error_msg = str(e)
                 
@@ -267,18 +337,45 @@ class Storage:
                             
                             logger.info(f"Successfully added missing column '{missing_column}'. Retrying save...")
                             
-                            # Update has_updated_at if we just added it
+                            # Update flags if we just added columns
                             if missing_column == 'updated_at':
                                 has_updated_at = True
-                                # Rebuild update clause
-                                update_clause = """
-                                    run_date = EXCLUDED.run_date,
-                                    score = EXCLUDED.score,
-                                    views = EXCLUDED.views,
-                                    likes = EXCLUDED.likes,
-                                    comments = EXCLUDED.comments,
-                                    updated_at = CURRENT_TIMESTAMP
-                                """
+                            elif missing_column == 'channel_title':
+                                has_channel_title = True
+                            
+                            # Rebuild update clause
+                            update_parts = [
+                                "run_date = EXCLUDED.run_date",
+                                "score = EXCLUDED.score",
+                                "views = EXCLUDED.views",
+                                "likes = EXCLUDED.likes",
+                                "comments = EXCLUDED.comments"
+                            ]
+                            
+                            # Check current state of columns
+                            cursor.execute("""
+                                SELECT EXISTS (
+                                    SELECT 1 FROM information_schema.columns 
+                                    WHERE table_name = 'trending_videos' AND column_name = 'channel_title'
+                                )
+                            """)
+                            has_channel_title_retry = cursor.fetchone()[0]
+                            
+                            cursor.execute("""
+                                SELECT EXISTS (
+                                    SELECT 1 FROM information_schema.columns 
+                                    WHERE table_name = 'trending_videos' AND column_name = 'updated_at'
+                                )
+                            """)
+                            has_updated_at_retry = cursor.fetchone()[0]
+                            
+                            if has_channel_title_retry:
+                                update_parts.append("channel_title = EXCLUDED.channel_title")
+                            
+                            if has_updated_at_retry:
+                                update_parts.append("updated_at = CURRENT_TIMESTAMP")
+                            
+                            update_clause_retry = ",\n                                        ".join(update_parts)
                             
                             # Retry saving this candidate
                             try:
@@ -293,7 +390,7 @@ class Storage:
                                 duration_value = int(candidate.duration_seconds) if candidate.duration_seconds is not None else 0
                                 
                                 # Use channel_title column if it exists
-                                if has_channel_title:
+                                if has_channel_title_retry:
                                     cursor.execute(f"""
                                         INSERT INTO trending_videos (
                                             run_date, category, entity, title, channel_id, channel_title,
@@ -301,7 +398,7 @@ class Storage:
                                             score, url, video_id, description, thumbnail_url
                                         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                                         ON CONFLICT (video_id) 
-                                        DO UPDATE SET {update_clause}
+                                        DO UPDATE SET {update_clause_retry}
                                     """, (
                                         run_date,
                                         candidate.category,
@@ -328,7 +425,7 @@ class Storage:
                                             score, url, video_id, description, thumbnail_url
                                         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                                         ON CONFLICT (video_id) 
-                                        DO UPDATE SET {update_clause}
+                                        DO UPDATE SET {update_clause_retry}
                                     """, (
                                         run_date,
                                         candidate.category,
@@ -347,6 +444,7 @@ class Storage:
                                         candidate.thumbnail_url or ""
                                     ))
                                 saved_count += 1
+                                saved_candidates_list.append(scored)  # Track successfully saved candidate
                                 logger.info(f"Successfully saved candidate {candidate.video_id} after auto-fixing column")
                                 continue
                             except Exception as retry_error:
@@ -395,6 +493,40 @@ class Storage:
                             
                             logger.info("Successfully added UNIQUE constraint on video_id. Retrying save...")
                             
+                            # Check current state of columns before retry
+                            cursor.execute("""
+                                SELECT EXISTS (
+                                    SELECT 1 FROM information_schema.columns 
+                                    WHERE table_name = 'trending_videos' AND column_name = 'channel_title'
+                                )
+                            """)
+                            has_channel_title_retry = cursor.fetchone()[0]
+                            
+                            cursor.execute("""
+                                SELECT EXISTS (
+                                    SELECT 1 FROM information_schema.columns 
+                                    WHERE table_name = 'trending_videos' AND column_name = 'updated_at'
+                                )
+                            """)
+                            has_updated_at_retry = cursor.fetchone()[0]
+                            
+                            # Rebuild update clause
+                            update_parts = [
+                                "run_date = EXCLUDED.run_date",
+                                "score = EXCLUDED.score",
+                                "views = EXCLUDED.views",
+                                "likes = EXCLUDED.likes",
+                                "comments = EXCLUDED.comments"
+                            ]
+                            
+                            if has_channel_title_retry:
+                                update_parts.append("channel_title = EXCLUDED.channel_title")
+                            
+                            if has_updated_at_retry:
+                                update_parts.append("updated_at = CURRENT_TIMESTAMP")
+                            
+                            update_clause_retry = ",\n                                        ".join(update_parts)
+                            
                             # Retry saving this candidate
                             try:
                                 if hasattr(scored.score, 'item'):
@@ -408,7 +540,7 @@ class Storage:
                                 duration_value = int(candidate.duration_seconds) if candidate.duration_seconds is not None else 0
                                 
                                 # Use channel_title column if it exists
-                                if has_channel_title:
+                                if has_channel_title_retry:
                                     cursor.execute(f"""
                                         INSERT INTO trending_videos (
                                             run_date, category, entity, title, channel_id, channel_title,
@@ -416,7 +548,7 @@ class Storage:
                                             score, url, video_id, description, thumbnail_url
                                         ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                                         ON CONFLICT (video_id) 
-                                        DO UPDATE SET {update_clause}
+                                        DO UPDATE SET {update_clause_retry}
                                     """, (
                                         run_date,
                                         candidate.category,
@@ -462,6 +594,7 @@ class Storage:
                                         candidate.thumbnail_url or ""
                                     ))
                                 saved_count += 1
+                                saved_candidates_list.append(scored)  # Track successfully saved candidate
                                 logger.info(f"Successfully saved candidate {candidate.video_id} after auto-fixing constraint")
                                 continue
                             except Exception as retry_error:
@@ -492,7 +625,9 @@ class Storage:
             conn.rollback()
         finally:
             cursor.close()
-            conn.close()
+            self._return_connection(conn)
+        
+        return saved_count, error_count, len(invalid_candidates), saved_candidates_list
     
     def export_csv(
         self,
@@ -528,7 +663,7 @@ class Storage:
         
         rows = cursor.fetchall()
         cursor.close()
-        conn.close()
+        self._return_connection(conn)
         
         if not rows:
             logger.warning(f"No data found for {run_date}, skipping CSV export")
@@ -567,7 +702,7 @@ class Storage:
         
         dates = [row[0] for row in cursor.fetchall()]
         cursor.close()
-        conn.close()
+        self._return_connection(conn)
         
         return dates
 
