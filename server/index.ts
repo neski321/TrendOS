@@ -75,12 +75,21 @@ app.use((req, res, next) => {
     // setting up all the other routes so the catch-all route
     // doesn't interfere with the other routes
     if (process.env.NODE_ENV === "production") {
+      log("Production mode: serving static files");
       serveStatic(app);
     } else {
-      log("Setting up Vite development server...");
-      const { setupVite } = await import("./vite");
-      await setupVite(httpServer, app);
-      log("Vite development server ready");
+      log("Development mode: Setting up Vite development server...");
+      try {
+        const { setupVite } = await import("./vite");
+        await setupVite(httpServer, app);
+        log("Vite development server ready");
+      } catch (viteError) {
+        log(`Failed to setup Vite: ${viteError instanceof Error ? viteError.message : "Unknown error"}`, "ERROR");
+        console.error("[VITE] Setup error:", viteError);
+        // Fallback to static files if Vite fails
+        log("Falling back to static file serving...");
+        serveStatic(app);
+      }
     }
 
     // ALWAYS serve the app on the port specified in the environment variable PORT
@@ -97,7 +106,9 @@ app.use((req, res, next) => {
       },
       () => {
         log(`serving on port ${port}`);
-        log(`Server ready at http://localhost:${port}`);
+        log(`Server ready at http://0.0.0.0:${port}`);
+        log(`NODE_ENV: ${process.env.NODE_ENV || "not set"}`);
+        log(`Server is listening and ready to accept connections`);
       },
     );
 
