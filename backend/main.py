@@ -28,6 +28,7 @@ from clients.google_trends_client import GoogleTrendsClient
 from core.scorer import filter_candidates, score_candidates, rank_by_category
 from core.storage import Storage
 from core.quota_tracker import QuotaTracker
+from core.api_key_manager import APIKeyManager
 from notifiers.discord_notifier import DiscordNotifier
 
 # Configure logging
@@ -49,14 +50,28 @@ def main():
         load_dotenv()
     
     # Get required environment variables
-    youtube_api_key = os.getenv("YOUTUBE_API_KEY")
+    # Support multiple YouTube API keys (YOUTUBE_API_KEY_1, YOUTUBE_API_KEY_2, etc.)
+    youtube_api_keys = []
+    # First check for single key (backward compatibility)
+    single_key = os.getenv("YOUTUBE_API_KEY")
+    if single_key:
+        youtube_api_keys.append(single_key)
+    
+    # Then check for multiple keys (YOUTUBE_API_KEY_1 through YOUTUBE_API_KEY_5)
+    for i in range(1, 6):
+        key = os.getenv(f"YOUTUBE_API_KEY_{i}")
+        if key and key not in youtube_api_keys:
+            youtube_api_keys.append(key)
+    
+    if not youtube_api_keys:
+        logger.error("At least one YouTube API key is required (YOUTUBE_API_KEY or YOUTUBE_API_KEY_1)")
+        sys.exit(1)
+    
+    logger.info(f"Loaded {len(youtube_api_keys)} YouTube API key(s)")
+    
     discord_webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
     database_url = os.getenv("DATABASE_URL")
     google_trends_api_key = os.getenv("GOOGLE_TRENDS_API_KEY")  # Optional
-    
-    if not youtube_api_key:
-        logger.error("YOUTUBE_API_KEY environment variable is required")
-        sys.exit(1)
     
     if not database_url:
         logger.error("DATABASE_URL environment variable is required")
@@ -81,12 +96,24 @@ def main():
     
     # Initialize quota tracker
     quota_tracker = QuotaTracker(database_url)
-    quota_usage = quota_tracker.get_quota_usage()
-    logger.info(f"YouTube API quota: {quota_usage['used']}/{quota_usage['limit']} ({quota_usage['percentage']}%) used today")
+    
+    # Initialize API key manager
+    api_key_manager = APIKeyManager(youtube_api_keys, quota_tracker)
+    
+    # Log quota status for all keys
+    key_status = api_key_manager.get_key_status()
+    for key_id, status in key_status.items():
+        quota = status.get('quota', {})
+        logger.info(
+            f"API Key {key_id}: "
+            f"{quota.get('used', 0)}/{quota.get('limit', 10000)} "
+            f"({quota.get('percentage', 0)}%) used, "
+            f"exhausted: {status.get('exhausted', False)}"
+        )
     
     # Initialize clients
     youtube_client = YouTubeClient(
-        api_key=youtube_api_key,
+        api_key_manager=api_key_manager,
         rate_limit_delay=settings_config.api.youtube.rate_limit_delay_seconds,
         quota_tracker=quota_tracker
     )

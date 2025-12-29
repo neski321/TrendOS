@@ -41,13 +41,16 @@ class QuotaTracker:
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
+            # Create table with api_key column for multi-key support
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS quota_tracking (
                     id SERIAL PRIMARY KEY,
-                    date DATE NOT NULL UNIQUE,
+                    date DATE NOT NULL,
+                    api_key_hash VARCHAR(64) NOT NULL DEFAULT 'default',
                     quota_used INTEGER NOT NULL DEFAULT 0,
                     quota_limit INTEGER NOT NULL DEFAULT %s,
-                    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+                    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(date, api_key_hash)
                 )
             """, (self.daily_quota,))
             conn.commit()
@@ -60,12 +63,20 @@ class QuotaTracker:
             cursor.close()
             conn.close()
     
-    def get_quota_usage(self, target_date: Optional[date] = None) -> Dict[str, int]:
+    def _hash_api_key(self, api_key: Optional[str] = None) -> str:
+        """Create a hash identifier for an API key."""
+        import hashlib
+        if api_key is None:
+            return 'default'
+        return hashlib.sha256(api_key.encode()).hexdigest()[:16]
+    
+    def get_quota_usage(self, target_date: Optional[date] = None, api_key: Optional[str] = None) -> Dict[str, int]:
         """
-        Get quota usage for a specific date.
+        Get quota usage for a specific date and API key.
         
         Args:
             target_date: Date to check (default: today)
+            api_key: API key to check quota for (default: None for aggregate)
             
         Returns:
             Dict with 'used', 'limit', 'remaining', 'percentage'
@@ -73,14 +84,16 @@ class QuotaTracker:
         if target_date is None:
             target_date = date.today()
         
+        api_key_hash = self._hash_api_key(api_key)
+        
         conn = self._get_connection()
         cursor = conn.cursor(cursor_factory=RealDictCursor)
         try:
             cursor.execute("""
                 SELECT quota_used, quota_limit
                 FROM quota_tracking
-                WHERE date = %s
-            """, (target_date,))
+                WHERE date = %s AND api_key_hash = %s
+            """, (target_date, api_key_hash))
             
             row = cursor.fetchone()
             if row:
@@ -91,10 +104,10 @@ class QuotaTracker:
                 used = 0
                 limit = self.daily_quota
                 cursor.execute("""
-                    INSERT INTO quota_tracking (date, quota_used, quota_limit)
-                    VALUES (%s, %s, %s)
-                    ON CONFLICT (date) DO NOTHING
-                """, (target_date, used, limit))
+                    INSERT INTO quota_tracking (date, api_key_hash, quota_used, quota_limit)
+                    VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (date, api_key_hash) DO NOTHING
+                """, (target_date, api_key_hash, used, limit))
                 conn.commit()
             
             remaining = limit - used
@@ -118,13 +131,14 @@ class QuotaTracker:
             cursor.close()
             conn.close()
     
-    def record_quota_usage(self, operation: str, units: Optional[int] = None):
+    def record_quota_usage(self, operation: str, units: Optional[int] = None, api_key: Optional[str] = None):
         """
         Record quota usage for an operation.
         
         Args:
             operation: Operation name (e.g., 'search.list', 'videos.list')
             units: Optional explicit units (if None, uses QUOTA_COSTS)
+            api_key: API key used for this operation
         """
         if units is None:
             units = QUOTA_COSTS.get(operation, 0)
@@ -134,20 +148,22 @@ class QuotaTracker:
             return
         
         today = date.today()
+        api_key_hash = self._hash_api_key(api_key)
+        
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
             # Insert or update quota usage
             cursor.execute("""
-                INSERT INTO quota_tracking (date, quota_used, quota_limit)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (date) 
+                INSERT INTO quota_tracking (date, api_key_hash, quota_used, quota_limit)
+                VALUES (%s, %s, %s, %s)
+                ON CONFLICT (date, api_key_hash) 
                 DO UPDATE SET 
                     quota_used = quota_tracking.quota_used + EXCLUDED.quota_used,
                     last_updated = CURRENT_TIMESTAMP
-            """, (today, units, self.daily_quota))
+            """, (today, api_key_hash, units, self.daily_quota))
             conn.commit()
-            logger.debug(f"Recorded {units} quota units for {operation}")
+            logger.debug(f"Recorded {units} quota units for {operation} (key: {api_key_hash[:8]}...)")
         except Exception as e:
             conn.rollback()
             logger.error(f"Error recording quota usage: {e}")
@@ -155,17 +171,18 @@ class QuotaTracker:
             cursor.close()
             conn.close()
     
-    def check_quota_available(self, required_units: int) -> tuple[bool, Dict[str, int]]:
+    def check_quota_available(self, required_units: int, api_key: Optional[str] = None) -> tuple[bool, Dict[str, int]]:
         """
         Check if enough quota is available.
         
         Args:
             required_units: Units needed for the operation
+            api_key: API key to check quota for
             
         Returns:
             Tuple of (is_available, usage_info)
         """
-        usage = self.get_quota_usage()
+        usage = self.get_quota_usage(api_key=api_key)
         is_available = usage['remaining'] >= required_units
         
         if not is_available:
