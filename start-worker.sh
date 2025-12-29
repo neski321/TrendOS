@@ -1,11 +1,18 @@
 #!/bin/bash
 # Production start script for Python worker service on Railway
 
-set -e
+# Don't use set -e initially so we can see where it fails
+set +e
 
-echo "=== Python Worker Start Script ==="
-echo "Current directory: $(pwd)"
-echo "Working directory: $PWD"
+echo "=== Python Worker Start Script ===" >&2
+echo "Script started at: $(date)" >&2
+echo "Current directory: $(pwd)" >&2
+echo "Working directory: $PWD" >&2
+echo "Script location: $0" >&2
+echo "All arguments: $@" >&2
+
+# Now enable strict error handling
+set -e
 
 # Define paths
 BACKEND_DIR="backend"
