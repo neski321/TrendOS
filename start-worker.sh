@@ -23,13 +23,29 @@ if [ ! -d "$BACKEND_DIR" ]; then
     exit 1
 fi
 
-# Check if venv directory exists
+# Check if venv directory exists, create it if missing
 if [ ! -d "$VENV_DIR" ]; then
-    echo "ERROR: Python virtual environment not found at $VENV_DIR"
-    echo "This usually means the build phase failed to create the venv."
-    echo "Backend directory contents:"
-    ls -la "$BACKEND_DIR/" || echo "Cannot list backend directory"
-    exit 1
+    echo "WARNING: Python virtual environment not found at $VENV_DIR"
+    echo "Creating virtual environment..."
+    cd "$BACKEND_DIR"
+    python3 -m venv venv
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Failed to create virtual environment"
+        echo "Backend directory contents:"
+        ls -la
+        exit 1
+    fi
+    echo "Installing Python dependencies..."
+    source venv/bin/activate
+    python3 -m pip install --upgrade pip
+    python3 -m pip install -r requirements.txt
+    if [ $? -ne 0 ]; then
+        echo "ERROR: Failed to install Python dependencies"
+        exit 1
+    fi
+    deactivate
+    cd ..
+    echo "✓ Virtual environment created and dependencies installed"
 fi
 
 # Determine Python executable (try python first, then python3)
