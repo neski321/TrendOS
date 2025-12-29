@@ -33,20 +33,46 @@ class VideoCandidate:
 class YouTubeClient:
     """Client for interacting with YouTube Data API v3."""
     
-    def __init__(self, api_key: str, rate_limit_delay: float = 1.0, quota_tracker=None):
+    def __init__(self, api_key_manager, rate_limit_delay: float = 1.0, quota_tracker=None):
         """
         Initialize YouTube client.
         
         Args:
-            api_key: YouTube Data API v3 key
+            api_key_manager: APIKeyManager instance for managing multiple API keys
             rate_limit_delay: Delay in seconds between API calls to respect rate limits
             quota_tracker: Optional QuotaTracker instance for quota management
         """
-        self.api_key = api_key
+        from core.api_key_manager import APIKeyManager
+        
+        if isinstance(api_key_manager, APIKeyManager):
+            self.api_key_manager = api_key_manager
+        else:
+            # Backward compatibility: if a string is passed, create a manager with single key
+            self.api_key_manager = APIKeyManager([api_key_manager], quota_tracker)
+        
         self.rate_limit_delay = rate_limit_delay
-        self.youtube = build('youtube', 'v3', developerKey=api_key)
         self._last_request_time = 0.0
         self.quota_tracker = quota_tracker
+        self._current_api_key = None
+        self._youtube_service = None
+        self._refresh_youtube_service()
+    
+    def _refresh_youtube_service(self, api_key: Optional[str] = None):
+        """Refresh the YouTube service with a new API key."""
+        if api_key is None:
+            api_key = self.api_key_manager.get_next_key()
+            if api_key is None:
+                raise ValueError("No available API keys")
+        
+        self._current_api_key = api_key
+        self._youtube_service = build('youtube', 'v3', developerKey=api_key)
+    
+    @property
+    def youtube(self):
+        """Get the YouTube service, refreshing if needed."""
+        if self._youtube_service is None:
+            self._refresh_youtube_service()
+        return self._youtube_service
     
     def _throttle(self):
         """Throttle requests to respect rate limits."""
@@ -102,16 +128,16 @@ class YouTubeClient:
             while len(candidates) < max_results:
                 self._throttle()
                 
-                # Check quota before making request
-                if self.quota_tracker:
-                    required_units = 100  # search.list costs 100 units
-                    is_available, usage = self.quota_tracker.check_quota_available(required_units)
-                    if not is_available:
-                        logger.warning(
-                            f"Insufficient quota to continue search. "
-                            f"Used: {usage['used']}/{usage['limit']} ({usage['percentage']}%)"
-                        )
-                        break
+                # Get available API key with sufficient quota
+                required_units = 100  # search.list costs 100 units
+                api_key = self.api_key_manager.get_available_key(required_units)
+                if api_key is None:
+                    logger.error("No API keys available with sufficient quota")
+                    break
+                
+                # Refresh service if key changed
+                if api_key != self._current_api_key:
+                    self._refresh_youtube_service(api_key)
                 
                 # Search for videos
                 search_response = self.youtube.search().list(
@@ -199,6 +225,10 @@ class YouTubeClient:
             logger.error(f"YouTube API error for query '{query}': {e}")
             if e.resp.status == 403:
                 logger.error("Rate limit exceeded or API key invalid")
+                # Mark current key as exhausted and try next one
+                if self._current_api_key:
+                    self.api_key_manager.mark_key_exhausted(self._current_api_key)
+                    logger.info("Marked API key as exhausted, will try next key on retry")
             raise
         except Exception as e:
             logger.error(f"Unexpected error searching YouTube: {e}")
@@ -238,16 +268,16 @@ class YouTubeClient:
             while len(candidates) < max_results:
                 self._throttle()
                 
-                # Check quota before making request
-                if self.quota_tracker:
-                    required_units = 100  # search.list costs 100 units
-                    is_available, usage = self.quota_tracker.check_quota_available(required_units)
-                    if not is_available:
-                        logger.warning(
-                            f"Insufficient quota to continue category search. "
-                            f"Used: {usage['used']}/{usage['limit']} ({usage['percentage']}%)"
-                        )
-                        break
+                # Get available API key with sufficient quota
+                required_units = 100  # search.list costs 100 units
+                api_key = self.api_key_manager.get_available_key(required_units)
+                if api_key is None:
+                    logger.error("No API keys available with sufficient quota")
+                    break
+                
+                # Refresh service if key changed
+                if api_key != self._current_api_key:
+                    self._refresh_youtube_service(api_key)
                 
                 # Search for videos
                 search_response = self.youtube.search().list(
@@ -262,7 +292,7 @@ class YouTubeClient:
                 
                 # Record quota usage
                 if self.quota_tracker:
-                    self.quota_tracker.record_quota_usage('search.list')
+                    self.quota_tracker.record_quota_usage('search.list', api_key=api_key)
                 
                 if not search_response.get('items'):
                     break
@@ -276,16 +306,16 @@ class YouTubeClient:
                 # Get detailed video information
                 self._throttle()
                 
-                # Check quota before making request
-                if self.quota_tracker:
-                    required_units = len(video_ids)  # videos.list costs 1 unit per video
-                    is_available, usage = self.quota_tracker.check_quota_available(required_units)
-                    if not is_available:
-                        logger.warning(
-                            f"Insufficient quota to fetch video details. "
-                            f"Used: {usage['used']}/{usage['limit']} ({usage['percentage']}%)"
-                        )
-                        break
+                # Get available API key with sufficient quota
+                required_units = len(video_ids)  # videos.list costs 1 unit per video
+                api_key = self.api_key_manager.get_available_key(required_units)
+                if api_key is None:
+                    logger.error("No API keys available with sufficient quota for video details")
+                    break
+                
+                # Refresh service if key changed
+                if api_key != self._current_api_key:
+                    self._refresh_youtube_service(api_key)
                 
                 videos_response = self.youtube.videos().list(
                     part='statistics,contentDetails,snippet',
@@ -294,7 +324,7 @@ class YouTubeClient:
                 
                 # Record quota usage
                 if self.quota_tracker:
-                    self.quota_tracker.record_quota_usage('videos.list', units=len(video_ids))
+                    self.quota_tracker.record_quota_usage('videos.list', units=len(video_ids), api_key=api_key)
                 
                 for video_item in videos_response.get('items', []):
                     try:
@@ -336,6 +366,10 @@ class YouTubeClient:
             logger.error(f"YouTube API error for category keyword '{query}': {e}")
             if e.resp.status == 403:
                 logger.error("Rate limit exceeded or API key invalid")
+                # Mark current key as exhausted and try next one
+                if self._current_api_key:
+                    self.api_key_manager.mark_key_exhausted(self._current_api_key)
+                    logger.info("Marked API key as exhausted, will try next key on retry")
             raise
         except Exception as e:
             logger.error(f"Unexpected error searching YouTube for category keyword: {e}")
