@@ -4,18 +4,29 @@ import { TrendCard } from "@/components/trend-card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Search, Filter, Radio, Zap, Loader2, Music, Trophy, Users, Newspaper } from "lucide-react";
+import { Search, Filter, Radio, Zap, Loader2, Music, Trophy, Users, Newspaper, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCandidates, useScannerStats, useMetrics, useBackendHealth } from "@/lib/api";
 import { BackendStatus } from "@/components/backend-status";
 import { cn } from "@/lib/utils";
+import { useLocation } from "wouter";
 
 type CategoryFilter = "all" | "hip_hop" | "nba" | "celebrity";
 
 export default function Feed() {
+  const [location, setLocation] = useLocation();
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>("all");
+  const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
+  const [showAllEntities, setShowAllEntities] = useState(false);
+  
+  // Parse URL query parameters for minScore
+  const urlParams = new URLSearchParams(location.split('?')[1] || '');
+  const minScoreParam = urlParams.get('minScore');
+  const minScore = minScoreParam ? parseFloat(minScoreParam) : 0;
+  const isHighScoreView = minScore >= 90;
+  
   const categoryFilter = selectedCategory === "all" ? undefined : selectedCategory;
-  const { data: items = [], isLoading, isFetching } = useCandidates(categoryFilter, 0);
+  const { data: items = [], isLoading, isFetching } = useCandidates(categoryFilter, minScore);
   const { data: scannerStats } = useScannerStats();
   const { data: metrics } = useMetrics();
   const { data: health } = useBackendHealth();
@@ -23,6 +34,22 @@ export default function Feed() {
 
   // Calculate active entities count from metrics
   const activeEntitiesCount = metrics?.activeEntities || 0;
+  
+  // Filter items by selected entity if one is selected
+  const filteredItems = selectedEntity 
+    ? items.filter(item => item.entity.toLowerCase() === selectedEntity.toLowerCase())
+    : items;
+  
+  // Get active entities from scanner stats (preferred) or extract from items
+  const activeEntitiesList = scannerStats?.activeEntities && scannerStats.activeEntities.length > 0
+    ? scannerStats.activeEntities
+    : Array.from(new Set(items.map(item => item.entity)));
+  
+  // Show first 5 entities, or all if expanded
+  const displayedEntities = showAllEntities 
+    ? activeEntitiesList 
+    : activeEntitiesList.slice(0, 5);
+  const remainingCount = activeEntitiesList.length > 5 ? activeEntitiesList.length - 5 : 0;
 
   const categoryFilters: { value: CategoryFilter; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { value: "all", label: "All", icon: Newspaper },
@@ -41,13 +68,23 @@ export default function Feed() {
           <div>
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-heading font-bold mb-1">Live Feed</h1>
-              <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-mono font-bold animate-pulse">
-                <Radio className="w-3 h-3" />
-                LIVE
-              </div>
+              {isHighScoreView && (
+                <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-primary/20 to-secondary/20 border border-primary/30 text-primary text-xs font-mono font-bold">
+                  <Sparkles className="w-3 h-3" />
+                  SCORE &gt; {minScore}
+                </div>
+              )}
+              {!isHighScoreView && (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-red-500 text-xs font-mono font-bold animate-pulse">
+                  <Radio className="w-3 h-3" />
+                  LIVE
+                </div>
+              )}
             </div>
             <p className="text-muted-foreground font-mono text-sm">
-              Real-time scanner output. Monitoring {activeEntitiesCount} entities.
+              {isHighScoreView 
+                ? `Showing premium candidates with score > ${minScore}. Only the highest quality clip targets.`
+                : `Real-time scanner output. Monitoring ${activeEntitiesCount} entities.`}
             </p>
           </div>
           
@@ -69,6 +106,32 @@ export default function Feed() {
              </Button>
           </div>
         </div>
+
+        {/* High Score Indicator Banner */}
+        {isHighScoreView && (
+          <div className="relative overflow-hidden rounded-lg border border-primary/30 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-4">
+            <div className="absolute inset-0 bg-gradient-to-br from-primary/5 to-transparent opacity-50" />
+            <div className="relative flex items-center gap-3">
+              <div className="p-2 rounded-lg bg-primary/20">
+                <Sparkles className="w-5 h-5 text-primary" />
+              </div>
+              <div className="flex-1">
+                <h3 className="font-semibold text-primary mb-0.5">Premium Clip Targets</h3>
+                <p className="text-xs text-muted-foreground">
+                  Showing only candidates with score &gt; {minScore}. These are the highest quality trending videos optimized for clipping.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLocation('/feed')}
+                className="border-primary/30 text-primary hover:bg-primary/10"
+              >
+                Show All
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Category Filters */}
         <div className="flex items-center gap-2 flex-wrap">
@@ -129,14 +192,49 @@ export default function Feed() {
            <div className="bg-card border border-border p-4 rounded-lg md:col-span-2 flex items-center gap-4">
               <div className="text-xs font-mono text-muted-foreground whitespace-nowrap">ACTIVE TARGETS:</div>
               <div className="flex flex-wrap gap-2">
-                 {scannerStats?.activeEntities && scannerStats.activeEntities.length > 0 ? (
+                 {displayedEntities.length > 0 ? (
                    <>
-                     {scannerStats.activeEntities.slice(0, 5).map(tag => (
-                       <Badge key={tag} variant="secondary" className="font-mono text-[10px]">{tag}</Badge>
-                     ))}
-                     {scannerStats.activeEntities.length > 5 && (
-                       <Badge variant="outline" className="font-mono text-[10px]">
-                         +{scannerStats.activeEntities.length - 5} more
+                     {displayedEntities.map(entity => {
+                       const isSelected = selectedEntity?.toLowerCase() === entity.toLowerCase();
+                       return (
+                         <Badge 
+                           key={entity} 
+                           variant={isSelected ? "default" : "secondary"}
+                           className={cn(
+                             "font-mono text-[10px] cursor-pointer transition-all hover:scale-105",
+                             isSelected ? "bg-primary text-black" : "hover:bg-primary/20"
+                           )}
+                           onClick={() => setSelectedEntity(isSelected ? null : entity)}
+                         >
+                           {entity}
+                         </Badge>
+                       );
+                     })}
+                     {remainingCount > 0 && !showAllEntities && (
+                       <Badge 
+                         variant="outline" 
+                         className="font-mono text-[10px] cursor-pointer hover:bg-muted border-border"
+                         onClick={() => setShowAllEntities(true)}
+                       >
+                         +{remainingCount} more
+                       </Badge>
+                     )}
+                     {showAllEntities && remainingCount > 0 && (
+                       <Badge 
+                         variant="outline" 
+                         className="font-mono text-[10px] cursor-pointer hover:bg-muted border-border"
+                         onClick={() => setShowAllEntities(false)}
+                       >
+                         Show less
+                       </Badge>
+                     )}
+                     {selectedEntity && (
+                       <Badge 
+                         variant="outline" 
+                         className="font-mono text-[10px] cursor-pointer hover:bg-destructive/20 text-destructive border-destructive/50"
+                         onClick={() => setSelectedEntity(null)}
+                       >
+                         Clear filter
                        </Badge>
                      )}
                    </>
@@ -149,15 +247,35 @@ export default function Feed() {
            </div>
         </div>
 
+        {/* Entity Filter Indicator */}
+        {selectedEntity && (
+          <div className="flex items-center gap-2 p-3 bg-primary/10 border border-primary/20 rounded-lg">
+            <Badge variant="default" className="bg-primary text-black font-mono text-xs">
+              {selectedEntity}
+            </Badge>
+            <span className="text-sm text-muted-foreground">
+              Showing {filteredItems.length} candidate{filteredItems.length !== 1 ? 's' : ''}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedEntity(null)}
+              className="ml-auto text-xs h-6"
+            >
+              Clear
+            </Button>
+          </div>
+        )}
+
         {/* Feed Grid */}
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </div>
-        ) : items.length > 0 ? (
+        ) : filteredItems.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             <AnimatePresence initial={false}>
-              {items.map((candidate) => (
+              {filteredItems.map((candidate) => (
                 <motion.div
                   key={candidate.id}
                   initial={{ opacity: 0, y: -20, scale: 0.95 }}
@@ -170,6 +288,17 @@ export default function Feed() {
                 </motion.div>
               ))}
             </AnimatePresence>
+          </div>
+        ) : selectedEntity ? (
+          <div className="text-center py-12 text-muted-foreground">
+            No candidates found for "{selectedEntity}". 
+            <Button 
+              variant="link" 
+              className="ml-2 text-primary"
+              onClick={() => setSelectedEntity(null)}
+            >
+              Clear filter
+            </Button>
           </div>
         ) : (
           <div className="text-center py-12 text-muted-foreground">

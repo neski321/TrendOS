@@ -70,7 +70,7 @@ def main():
     
     logger.info(f"Loaded {len(youtube_api_keys)} YouTube API key(s)")
     
-    discord_webhook_url = os.getenv("DISCORD_WEBHOOK_URL")
+    # Get Discord webhook URL from database settings first, then fall back to env var
     database_url = os.getenv("DATABASE_URL")
     google_trends_api_key = os.getenv("GOOGLE_TRENDS_API_KEY")  # Optional
     
@@ -94,6 +94,9 @@ def main():
     entities_config, settings_config = load_all_configs(config_dir, database_url)
     
     logger.info("Configuration loaded successfully")
+    
+    # Get Discord webhook URL from settings (database) or environment variable (fallback)
+    discord_webhook_url = settings_config.discord.webhook_url or os.getenv("DISCORD_WEBHOOK_URL")
     
     # Initialize quota tracker
     quota_tracker = QuotaTracker(database_url)

@@ -508,6 +508,7 @@ export interface Settings {
   };
   discord: {
     enabled: boolean;
+    webhook_url?: string;
   };
   automation: {
     auto_run_on_startup: boolean;
