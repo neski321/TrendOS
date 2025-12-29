@@ -6,6 +6,13 @@ echo "=== Python Worker Start Script ==="
 echo "Script started at: $(date)"
 echo "Current directory: $(pwd)"
 echo "Script location: $0"
+echo "PATH: $PATH"
+
+# Try to source nix environment if available (Railway uses nixpacks)
+if [ -f /nix/var/nix/profiles/default/etc/profile.d/nix.sh ]; then
+    echo "Sourcing nix environment..."
+    source /nix/var/nix/profiles/default/etc/profile.d/nix.sh
+fi
 
 # Enable strict error handling
 set -e
@@ -26,9 +33,51 @@ fi
 # Check if venv directory exists, create it if missing
 if [ ! -d "$VENV_DIR" ]; then
     echo "WARNING: Python virtual environment not found at $VENV_DIR"
+    echo "Finding Python executable..."
+    
+    # Try to find Python - check common locations and PATH
+    PYTHON_CMD=""
+    if command -v python3 >/dev/null 2>&1; then
+        PYTHON_CMD="python3"
+        echo "Found python3 in PATH"
+    elif command -v python >/dev/null 2>&1; then
+        PYTHON_CMD="python"
+        echo "Found python in PATH"
+    else
+        # Try to find Python in nix store (Railway uses nixpacks)
+        echo "Python not in PATH, searching nix store..."
+        PYTHON_CMD=$(find /nix/store -name python3 -type f 2>/dev/null | grep -E "python311|python3" | head -1)
+        if [ -n "$PYTHON_CMD" ] && [ -x "$PYTHON_CMD" ]; then
+            echo "Found Python in nix store: $PYTHON_CMD"
+        else
+            # Last resort: try common nix paths
+            echo "Trying alternative search methods..."
+            for path in /nix/store/*/bin/python3 /nix/store/*/bin/python; do
+                if [ -x "$path" ] 2>/dev/null; then
+                    PYTHON_CMD="$path"
+                    echo "Found Python at: $PYTHON_CMD"
+                    break
+                fi
+            done
+            if [ -z "$PYTHON_CMD" ]; then
+                echo "ERROR: Python executable not found"
+                echo "PATH: $PATH"
+                echo "Checking common locations..."
+                ls -la /usr/bin/python* 2>&1 || true
+                ls -la /usr/local/bin/python* 2>&1 || true
+                echo "Searching for Python..."
+                which python3 python 2>&1 || true
+                exit 1
+            fi
+        fi
+    fi
+    
+    echo "Using Python: $PYTHON_CMD"
+    $PYTHON_CMD --version
+    
     echo "Creating virtual environment..."
     cd "$BACKEND_DIR"
-    python3 -m venv venv
+    $PYTHON_CMD -m venv venv
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to create virtual environment"
         echo "Backend directory contents:"
@@ -37,8 +86,8 @@ if [ ! -d "$VENV_DIR" ]; then
     fi
     echo "Installing Python dependencies..."
     source venv/bin/activate
-    python3 -m pip install --upgrade pip
-    python3 -m pip install -r requirements.txt
+    python -m pip install --upgrade pip
+    python -m pip install -r requirements.txt
     if [ $? -ne 0 ]; then
         echo "ERROR: Failed to install Python dependencies"
         exit 1
