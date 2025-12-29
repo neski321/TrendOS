@@ -29,6 +29,7 @@ from core.scorer import filter_candidates, score_candidates, rank_by_category
 from core.storage import Storage
 from core.quota_tracker import QuotaTracker
 from core.api_key_manager import APIKeyManager
+from core.scan_status import ScanStatusTracker
 from notifiers.discord_notifier import DiscordNotifier
 
 # Configure logging
@@ -128,6 +129,11 @@ def main():
     # Initialize storage (use DATABASE_URL from environment, override config)
     storage = Storage(database_url)
     
+    # Initialize scan status tracker
+    scan_status_tracker = ScanStatusTracker(database_url)
+    scan_id = scan_status_tracker.create_scan()
+    logger.info(f"Created scan record: {scan_id}")
+    
     # Initialize Discord notifier (if enabled)
     discord_notifier = None
     if settings_config.discord.enabled and discord_webhook_url:
@@ -143,190 +149,249 @@ def main():
     logger.info(f"Starting scan for videos published after {time_window_start}")
     logger.info(f"Time window: {entities_config.time_window_hours} hours")
     
-    # Collect candidates from all categories
-    all_candidates = []
-    
-    for category_name, category_config in entities_config.categories.items():
-        logger.info(f"Scanning category: {category_name}")
+    # Wrap entire scan in try/except to track completion/failure
+    try:
+        # Mark scan as running
+        scan_status_tracker.start_scan(scan_id, "Starting candidate collection...")
         
-        # Search for entities
-        for entity in category_config.entities:
-            for keyword in entities_config.keywords:
+        # Collect candidates from all categories
+        all_candidates = []
+        
+        for category_name, category_config in entities_config.categories.items():
+            logger.info(f"Scanning category: {category_name}")
+            scan_status_tracker.update_progress(
+                scan_id,
+                progress_message=f"Scanning category: {category_name}..."
+            )
+        
+            # Search for entities
+            for entity in category_config.entities:
+                for keyword in entities_config.keywords:
+                    try:
+                        logger.info(f"  Searching: {entity} + {keyword}")
+                        candidates = youtube_client.search_candidates(
+                            entity=entity,
+                            keyword=keyword,
+                            category=category_name,
+                            published_after=time_window_start,
+                            max_results=settings_config.api.youtube.max_results_per_query
+                        )
+                        all_candidates.extend(candidates)
+                    except Exception as e:
+                        logger.error(f"  Error searching {entity} + {keyword}: {e}")
+                        continue
+            
+            # Search for channels
+            for channel in category_config.channels:
+                for keyword in entities_config.keywords:
+                    try:
+                        logger.info(f"  Searching channel: {channel} + {keyword}")
+                        candidates = youtube_client.search_candidates(
+                            entity=channel,
+                            keyword=keyword,
+                            category=category_name,
+                            published_after=time_window_start,
+                            max_results=settings_config.api.youtube.max_results_per_query
+                        )
+                        all_candidates.extend(candidates)
+                    except Exception as e:
+                        logger.error(f"  Error searching channel {channel} + {keyword}: {e}")
+                        continue
+            
+            # Search for category-wide trending content
+            for category_keyword in category_config.category_keywords:
                 try:
-                    logger.info(f"  Searching: {entity} + {keyword}")
-                    candidates = youtube_client.search_candidates(
-                        entity=entity,
-                        keyword=keyword,
+                    logger.info(f"  Searching category-wide trending: {category_keyword}")
+                    # Use viewCount order to get trending content, limit results to avoid too many duplicates
+                    candidates = youtube_client.search_by_category_keyword(
+                        category_keyword=category_keyword,
                         category=category_name,
                         published_after=time_window_start,
-                        max_results=settings_config.api.youtube.max_results_per_query
+                        max_results=min(settings_config.api.youtube.max_results_per_query, 30),  # Limit category searches
+                        order="viewCount"  # Get trending content by view count
                     )
                     all_candidates.extend(candidates)
                 except Exception as e:
-                    logger.error(f"  Error searching {entity} + {keyword}: {e}")
+                    logger.error(f"  Error searching category keyword {category_keyword}: {e}")
                     continue
         
-        # Search for channels
-        for channel in category_config.channels:
-            for keyword in entities_config.keywords:
-                try:
-                    logger.info(f"  Searching channel: {channel} + {keyword}")
-                    candidates = youtube_client.search_candidates(
-                        entity=channel,
-                        keyword=keyword,
-                        category=category_name,
-                        published_after=time_window_start,
-                        max_results=settings_config.api.youtube.max_results_per_query
-                    )
-                    all_candidates.extend(candidates)
-                except Exception as e:
-                    logger.error(f"  Error searching channel {channel} + {keyword}: {e}")
-                    continue
-        
-        # Search for category-wide trending content
-        for category_keyword in category_config.category_keywords:
-            try:
-                logger.info(f"  Searching category-wide trending: {category_keyword}")
-                # Use viewCount order to get trending content, limit results to avoid too many duplicates
-                candidates = youtube_client.search_by_category_keyword(
-                    category_keyword=category_keyword,
-                    category=category_name,
-                    published_after=time_window_start,
-                    max_results=min(settings_config.api.youtube.max_results_per_query, 30),  # Limit category searches
-                    order="viewCount"  # Get trending content by view count
-                )
-                all_candidates.extend(candidates)
-            except Exception as e:
-                logger.error(f"  Error searching category keyword {category_keyword}: {e}")
-                continue
+        logger.info(f"Found {len(all_candidates)} total candidates before deduplication")
     
-    logger.info(f"Found {len(all_candidates)} total candidates before deduplication")
-    
-    # Deduplicate candidates by video_id (keep first occurrence)
-    seen_video_ids = {}
-    unique_candidates = []
-    for candidate in all_candidates:
-        if candidate.video_id not in seen_video_ids:
-            seen_video_ids[candidate.video_id] = candidate
-            unique_candidates.append(candidate)
-        else:
-            # If we've seen this video, update entity_matched if needed (for better categorization)
-            existing = seen_video_ids[candidate.video_id]
-            # Keep the candidate with more specific entity match if available
-            if len(candidate.entity_matched) > len(existing.entity_matched):
-                unique_candidates.remove(existing)
-                unique_candidates.append(candidate)
-                seen_video_ids[candidate.video_id] = candidate
-    
-    logger.info(f"After deduplication: {len(unique_candidates)} unique candidates")
-    
-    # Filter candidates
-    logger.info(f"Filtering {len(unique_candidates)} unique candidates...")
-    filtered = filter_candidates(
-        unique_candidates,
-        settings_config,
-        entities_config.keywords,
-        entities_config
-    )
-    logger.info(f"After filtering: {len(filtered)} candidates remain")
-    
-    # Get cross-platform signals (stub for now)
-    cross_platform_signals = {}
-    # Future: tiktok_client.get_cross_platform_signal() for each candidate
-    
-    # Get Google Trends signals for validation
-    logger.info("Validating candidates with Google Trends...")
-    google_trends_signals = {}
-    for candidate in filtered[:50]:  # Limit to first 50 to avoid rate limits
-        try:
-            # Check if entity or category keyword is trending
-            trend_keyword = candidate.entity_matched or candidate.category
-            trend_score = google_trends_client.get_trending_score(trend_keyword)
-            google_trends_signals[candidate.video_id] = trend_score
-            if trend_score > 0.3:  # Log if significantly trending
-                logger.debug(f"  {candidate.title[:50]}... - Trends score: {trend_score:.2f}")
-        except Exception as e:
-            logger.warning(f"  Error checking Google Trends for {candidate.video_id}: {e}")
-            google_trends_signals[candidate.video_id] = 0.0
-    
-    # Score candidates
-    logger.info(f"Scoring {len(filtered)} filtered candidates...")
-    scored = score_candidates(
-        filtered,
-        entities_config,
-        settings_config,
-        cross_platform_signals,
-        google_trends_signals
-    )
-    logger.info(f"Scored {len(scored)} candidates")
-    
-    # Limit candidates per category
-    by_category = {}
-    for scored_candidate in scored:
-        category = scored_candidate.candidate.category
-        if category not in by_category:
-            by_category[category] = []
-        if len(by_category[category]) < settings_config.limits.max_candidates_per_category:
-            by_category[category].append(scored_candidate)
-    
-    # Flatten back to list for storage
-    all_scored = []
-    for candidates in by_category.values():
-        all_scored.extend(candidates)
-    
-    # Validate candidates before saving (so we know which ones are valid for Discord)
-    from core.validators import validate_candidates
-    valid_candidates, invalid_candidates = validate_candidates(all_scored)
-    
-    if invalid_candidates:
-        logger.warning(f"Skipping {len(invalid_candidates)} invalid candidates")
-        for candidate, errors in invalid_candidates[:5]:  # Log first 5
-            logger.warning(f"  - {candidate.candidate.video_id}: {', '.join(errors)}")
-    
-    # Save to database (only valid candidates)
-    logger.info(f"Saving {len(valid_candidates)} valid candidates to database (out of {len(all_scored)} total)...")
-    saved_count, error_count, invalid_count, saved_candidates_list = storage.save_run(run_date, valid_candidates)
-    logger.info(f"Successfully saved {saved_count} candidates to database")
-    if error_count > 0:
-        logger.warning(f"Failed to save {error_count} candidates due to errors")
-    if invalid_count > 0:
-        logger.warning(f"Skipped {invalid_count} invalid candidates")
-    
-    # Export CSV if enabled
-    if settings_config.storage.export_csv:
-        csv_path = storage.export_csv(run_date, settings_config.storage.csv_output_dir)
-        if csv_path:
-            logger.info(f"CSV exported to {csv_path}")
-    
-    # Rank by category for Discord (use only candidates that were actually saved to database)
-    if saved_candidates_list:
-        top_by_category = rank_by_category(saved_candidates_list, settings_config)
-    else:
-        logger.warning("No candidates were saved to database, skipping Discord notification")
-        top_by_category = {}
-    
-    # Send Discord notification
-    if discord_notifier:
-        top_hiphop = top_by_category.get("hip_hop", [])
-        top_nba = top_by_category.get("nba", [])
-        top_celebrity = top_by_category.get("celebrity", [])
-        
-        message = discord_notifier.build_summary_message(
-            top_hiphop,
-            top_nba,
-            top_celebrity,
-            run_date
+        # Update progress
+        scan_status_tracker.update_progress(
+            scan_id,
+            progress_message=f"Found {len(all_candidates)} candidates, deduplicating...",
+            candidates_found=len(all_candidates)
         )
         
-        success = discord_notifier.send_summary(message)
-        if success:
-            logger.info("Discord notification sent")
+        # Deduplicate candidates by video_id (keep first occurrence)
+        seen_video_ids = {}
+        unique_candidates = []
+        for candidate in all_candidates:
+            if candidate.video_id not in seen_video_ids:
+                seen_video_ids[candidate.video_id] = candidate
+                unique_candidates.append(candidate)
+            else:
+                # If we've seen this video, update entity_matched if needed (for better categorization)
+                existing = seen_video_ids[candidate.video_id]
+                # Keep the candidate with more specific entity match if available
+                if len(candidate.entity_matched) > len(existing.entity_matched):
+                    unique_candidates.remove(existing)
+                    unique_candidates.append(candidate)
+                    seen_video_ids[candidate.video_id] = candidate
+        
+        logger.info(f"After deduplication: {len(unique_candidates)} unique candidates")
+        
+        # Update progress
+        scan_status_tracker.update_progress(
+            scan_id,
+            progress_message=f"Filtering {len(unique_candidates)} unique candidates...",
+            candidates_found=len(unique_candidates)
+        )
+        
+        # Filter candidates
+        logger.info(f"Filtering {len(unique_candidates)} unique candidates...")
+        filtered = filter_candidates(
+            unique_candidates,
+            settings_config,
+            entities_config.keywords,
+            entities_config
+        )
+        logger.info(f"After filtering: {len(filtered)} candidates remain")
+        
+        # Update progress
+        scan_status_tracker.update_progress(
+            scan_id,
+            progress_message=f"Scoring and validating {len(filtered)} candidates...",
+            candidates_found=len(filtered)
+        )
+        
+        # Get cross-platform signals (stub for now)
+        cross_platform_signals = {}
+        # Future: tiktok_client.get_cross_platform_signal() for each candidate
+        
+        # Get Google Trends signals for validation
+        logger.info("Validating candidates with Google Trends...")
+        google_trends_signals = {}
+        for candidate in filtered[:50]:  # Limit to first 50 to avoid rate limits
+            try:
+                # Check if entity or category keyword is trending
+                trend_keyword = candidate.entity_matched or candidate.category
+                trend_score = google_trends_client.get_trending_score(trend_keyword)
+                google_trends_signals[candidate.video_id] = trend_score
+                if trend_score > 0.3:  # Log if significantly trending
+                    logger.debug(f"  {candidate.title[:50]}... - Trends score: {trend_score:.2f}")
+            except Exception as e:
+                logger.warning(f"  Error checking Google Trends for {candidate.video_id}: {e}")
+                google_trends_signals[candidate.video_id] = 0.0
+        
+        # Score candidates
+        logger.info(f"Scoring {len(filtered)} filtered candidates...")
+        scored = score_candidates(
+            filtered,
+            entities_config,
+            settings_config,
+            cross_platform_signals,
+            google_trends_signals
+        )
+        logger.info(f"Scored {len(scored)} candidates")
+        
+        # Limit candidates per category
+        by_category = {}
+        for scored_candidate in scored:
+            category = scored_candidate.candidate.category
+            if category not in by_category:
+                by_category[category] = []
+            if len(by_category[category]) < settings_config.limits.max_candidates_per_category:
+                by_category[category].append(scored_candidate)
+        
+        # Flatten back to list for storage
+        all_scored = []
+        for candidates in by_category.values():
+            all_scored.extend(candidates)
+        
+        # Validate candidates before saving (so we know which ones are valid for Discord)
+        from core.validators import validate_candidates
+        valid_candidates, invalid_candidates = validate_candidates(all_scored)
+        
+        if invalid_candidates:
+            logger.warning(f"Skipping {len(invalid_candidates)} invalid candidates")
+            for candidate, errors in invalid_candidates[:5]:  # Log first 5
+                logger.warning(f"  - {candidate.candidate.video_id}: {', '.join(errors)}")
+        
+        # Update progress
+        scan_status_tracker.update_progress(
+            scan_id,
+            progress_message=f"Saving {len(valid_candidates)} valid candidates to database...",
+            candidates_found=len(valid_candidates)
+        )
+        
+        # Save to database (only valid candidates)
+        logger.info(f"Saving {len(valid_candidates)} valid candidates to database (out of {len(all_scored)} total)...")
+        saved_count, error_count, invalid_count, saved_candidates_list = storage.save_run(run_date, valid_candidates)
+        logger.info(f"Successfully saved {saved_count} candidates to database")
+        if error_count > 0:
+            logger.warning(f"Failed to save {error_count} candidates due to errors")
+        if invalid_count > 0:
+            logger.warning(f"Skipped {invalid_count} invalid candidates")
+        
+        # Export CSV if enabled
+        if settings_config.storage.export_csv:
+            csv_path = storage.export_csv(run_date, settings_config.storage.csv_output_dir)
+            if csv_path:
+                logger.info(f"CSV exported to {csv_path}")
+        
+        # Update progress
+        scan_status_tracker.update_progress(
+            scan_id,
+            progress_message="Sending notifications...",
+            candidates_found=len(valid_candidates),
+            candidates_saved=saved_count
+        )
+        
+        # Rank by category for Discord (use only candidates that were actually saved to database)
+        if saved_candidates_list:
+            top_by_category = rank_by_category(saved_candidates_list, settings_config)
         else:
-            logger.error("Failed to send Discord notification")
-    
-    logger.info("Scan complete!")
-    logger.info(f"Total candidates processed: {len(all_scored)}")
-    logger.info(f"Top picks: {sum(len(v) for v in top_by_category.values())} across categories")
+            logger.warning("No candidates were saved to database, skipping Discord notification")
+            top_by_category = {}
+        
+        # Send Discord notification
+        if discord_notifier:
+            top_hiphop = top_by_category.get("hip_hop", [])
+            top_nba = top_by_category.get("nba", [])
+            top_celebrity = top_by_category.get("celebrity", [])
+            
+            message = discord_notifier.build_summary_message(
+                top_hiphop,
+                top_nba,
+                top_celebrity,
+                run_date
+            )
+            
+            success = discord_notifier.send_summary(message)
+            if success:
+                logger.info("Discord notification sent")
+            else:
+                logger.error("Failed to send Discord notification")
+        
+        # Mark scan as completed
+        scan_status_tracker.complete_scan(
+            scan_id,
+            candidates_found=len(valid_candidates),
+            candidates_saved=saved_count
+        )
+        
+        logger.info("Scan complete!")
+        logger.info(f"Total candidates processed: {len(all_scored)}")
+        logger.info(f"Top picks: {sum(len(v) for v in top_by_category.values())} across categories")
+        
+    except Exception as e:
+        # Mark scan as failed
+        error_message = str(e)
+        scan_status_tracker.fail_scan(scan_id, error_message)
+        logger.exception(f"Scan failed: {e}")
+        raise
 
 
 if __name__ == "__main__":

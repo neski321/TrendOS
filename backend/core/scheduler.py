@@ -141,11 +141,13 @@ class ScanScheduler:
         logger.info(f"Spawning scan process: {python_executable} {python_script}")
         
         # Run in background (detached)
+        # Note: stdout/stderr are inherited so logs go to system logs (Railway/console)
+        # Database logs via DatabaseLogHandler still work regardless
         subprocess.Popen(
             [python_executable, str(python_script)],
             cwd=str(backend_dir),
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
+            stdout=None,  # Inherit stdout (goes to system logs)
+            stderr=None,  # Inherit stderr (goes to system logs, Python logging writes here)
             start_new_session=True
         )
 

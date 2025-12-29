@@ -2,7 +2,7 @@
 import csv
 import logging
 from pathlib import Path
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import List, Optional, Set
 import psycopg2
 from psycopg2 import pool
@@ -161,6 +161,46 @@ class Storage:
             cursor.close()
             self._return_connection(conn)
     
+    def cleanup_old_candidates(self, retention_days: int = 3) -> int:
+        """
+        Remove candidates older than the specified retention period.
+        
+        Args:
+            retention_days: Number of days to retain candidates (default: 3)
+            
+        Returns:
+            Number of candidates deleted
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        
+        try:
+            # Calculate cutoff date
+            cutoff_date = date.today() - timedelta(days=retention_days)
+            
+            # Delete candidates with run_date older than cutoff
+            cursor.execute("""
+                DELETE FROM trending_videos
+                WHERE run_date < %s
+            """, (cutoff_date,))
+            
+            deleted_count = cursor.rowcount
+            conn.commit()
+            
+            if deleted_count > 0:
+                logger.info(f"Cleaned up {deleted_count} candidates older than {retention_days} days (cutoff: {cutoff_date})")
+            else:
+                logger.debug(f"No candidates older than {retention_days} days to clean up")
+            
+            return deleted_count
+        except Exception as e:
+            conn.rollback()
+            logger.error(f"Error cleaning up old candidates: {e}")
+            return 0
+        finally:
+            cursor.close()
+            self._return_connection(conn)
+    
     def save_run(
         self,
         run_date: date,
@@ -188,6 +228,11 @@ class Storage:
         if not valid_candidates:
             logger.warning("No valid candidates to save")
             return 0, 0, len(invalid_candidates), []
+        
+        # Clean up old candidates (older than 3 days) before saving new ones
+        deleted_count = self.cleanup_old_candidates(retention_days=3)
+        if deleted_count > 0:
+            logger.info(f"Removed {deleted_count} old candidates before saving new scan results")
         
         conn = self._get_connection()
         cursor = conn.cursor()

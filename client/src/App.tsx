@@ -8,12 +8,14 @@ import Dashboard from "@/pages/dashboard";
 import Feed from "@/pages/feed";
 import Logs from "@/pages/logs";
 import Settings from "@/pages/settings";
+import Candidate from "@/pages/candidate";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/feed" component={Feed} />
+      <Route path="/candidate/:id" component={Candidate} />
       <Route path="/logs" component={Logs} />
       <Route path="/settings" component={Settings} />
       <Route component={NotFound} />

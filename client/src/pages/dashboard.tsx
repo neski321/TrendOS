@@ -4,12 +4,14 @@ import { Card, CardHeader, CardTitle, CardContent, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { ArrowUpRight, TrendingUp, Users, Activity, PlayCircle, Zap, Loader2 } from "lucide-react";
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
-import { useMetrics, useTopPicks, useTriggerScan } from "@/lib/api";
+import { useMetrics, useTopPicks, useTriggerScan, useScanStatus } from "@/lib/api";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 export default function Dashboard() {
   const { data: metrics, isLoading: metricsLoading } = useMetrics();
   const { data: topPicks = [], isLoading: picksLoading } = useTopPicks(3);
   const triggerScan = useTriggerScan();
+  const { data: scanStatus, isLoading: scanStatusLoading } = useScanStatus();
   
   // Use live data or fallback to empty arrays
   const velocityData = metrics?.velocityData || [];
@@ -22,6 +24,30 @@ export default function Dashboard() {
   return (
     <Layout>
       <div className="max-w-7xl mx-auto space-y-8">
+        
+        {/* Scan Status Banner */}
+        {!scanStatusLoading && scanStatus?.isRunning && scanStatus.scan && (
+          <Alert className="bg-primary/10 border-primary/20">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
+            <AlertTitle className="text-primary font-semibold">Scan Running</AlertTitle>
+            <AlertDescription className="text-sm">
+              <div className="mt-1">
+                <p className="font-medium">{scanStatus.scan.progress_message || "Processing..."}</p>
+                {scanStatus.scan.candidates_found > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Found: {scanStatus.scan.candidates_found} candidates
+                    {scanStatus.scan.candidates_saved > 0 && ` • Saved: ${scanStatus.scan.candidates_saved}`}
+                  </p>
+                )}
+                {scanStatus.scan.started_at && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Started: {new Date(scanStatus.scan.started_at).toLocaleTimeString()}
+                  </p>
+                )}
+              </div>
+            </AlertDescription>
+          </Alert>
+        )}
         
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -173,7 +199,7 @@ export default function Dashboard() {
                <Loader2 className="w-6 h-6 animate-spin text-primary" />
              </div>
            ) : topPicks.length > 0 ? (
-             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
                {topPicks.map(candidate => (
                  <TrendCard key={candidate.id} candidate={candidate} />
                ))}

@@ -117,6 +117,27 @@ export function useCandidates(category?: string, minScore = 0) {
   return query;
 }
 
+// Fetch single candidate by ID
+export function useCandidate(id: string | null) {
+  return useQuery<VideoCandidate>({
+    queryKey: ["/api/candidates", id],
+    queryFn: async () => {
+      if (!id) throw new Error("Candidate ID is required");
+      const res = await fetch(`/api/candidates/${id}`);
+      if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error("Candidate not found");
+        }
+        throw new Error(`Failed to fetch candidate: ${res.statusText}`);
+      }
+      return res.json();
+    },
+    enabled: !!id,
+    retry: 2,
+    retryDelay: 2000,
+  });
+}
+
 // Fetch dashboard metrics
 export function useMetrics() {
   const query = useQuery<Metrics>({
@@ -379,6 +400,8 @@ export function useTriggerScan() {
       queryClient.invalidateQueries({ queryKey: ["/api/metrics"] });
       queryClient.invalidateQueries({ queryKey: ["/api/top-picks"] });
       queryClient.invalidateQueries({ queryKey: ["/api/scanner-stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scan/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scan/history"] });
     },
     onError: (error: unknown) => {
       const message = getErrorMessage(error, "Failed to trigger scan");
@@ -389,6 +412,82 @@ export function useTriggerScan() {
         duration: 5000,
       });
     },
+  });
+}
+
+// API Quota Usage interface
+export interface QuotaUsage {
+  used: number;
+  limit: number;
+  remaining: number;
+  percentage: number;
+}
+
+// Get API quota usage
+export function useQuotaUsage() {
+  return useQuery({
+    queryKey: ["/api/quota/usage"],
+    queryFn: async (): Promise<QuotaUsage> => {
+      const res = await fetch("/api/quota/usage");
+      if (!res.ok) {
+        throw new Error(`Failed to fetch quota usage: ${res.statusText}`);
+      }
+      return res.json();
+    },
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+}
+
+// Scan status interface
+export interface ScanStatus {
+  scan_id: string;
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  started_at: string | null;
+  completed_at: string | null;
+  error_message: string | null;
+  progress_message: string | null;
+  candidates_found: number;
+  candidates_saved: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScanStatusResponse {
+  isRunning: boolean;
+  scan: ScanStatus | null;
+}
+
+// Get current scan status
+export function useScanStatus() {
+  return useQuery({
+    queryKey: ["/api/scan/status"],
+    queryFn: async (): Promise<ScanStatusResponse> => {
+      const res = await fetch("/api/scan/status");
+      if (!res.ok) {
+        throw new Error(`Failed to fetch scan status: ${res.statusText}`);
+      }
+      return res.json();
+    },
+    refetchInterval: (query) => {
+      // Poll every 2 seconds if scan is running, otherwise every 30 seconds
+      const data = query.state.data as ScanStatusResponse | undefined;
+      return data?.isRunning ? 2000 : 30000;
+    },
+  });
+}
+
+// Get scan history
+export function useScanHistory(limit: number = 10) {
+  return useQuery({
+    queryKey: ["/api/scan/history", limit],
+    queryFn: async (): Promise<ScanStatus[]> => {
+      const res = await fetch(`/api/scan/history?limit=${limit}`);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch scan history: ${res.statusText}`);
+      }
+      return res.json();
+    },
+    refetchInterval: 30000, // Refresh every 30 seconds
   });
 }
 

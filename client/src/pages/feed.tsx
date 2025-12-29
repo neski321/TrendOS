@@ -155,7 +155,7 @@ export default function Feed() {
             <Loader2 className="w-6 h-6 animate-spin text-primary" />
           </div>
         ) : items.length > 0 ? (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
             <AnimatePresence initial={false}>
               {items.map((candidate) => (
                 <motion.div

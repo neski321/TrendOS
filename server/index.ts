@@ -48,8 +48,47 @@ app.use((req, res, next) => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+      
       if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+        // For large responses (arrays or large objects), log a summary instead of full JSON
+        const jsonString = JSON.stringify(capturedJsonResponse);
+        const jsonSize = jsonString.length;
+        
+        // Special handling for candidate detail endpoint (single candidate object with potentially long description)
+        const isCandidateDetail = path.startsWith("/api/candidates/") && path !== "/api/candidates" && !Array.isArray(capturedJsonResponse);
+        
+        // If response is large (> 500 chars) or is an array with many items, summarize it
+        if (Array.isArray(capturedJsonResponse)) {
+          if (capturedJsonResponse.length > 5 || jsonSize > 500) {
+            logLine += ` :: [Array with ${capturedJsonResponse.length} items, ${jsonSize} bytes]`;
+          } else {
+            logLine += ` :: ${jsonString}`;
+          }
+        } else if (isCandidateDetail && jsonSize > 300) {
+          // For candidate detail: summarize if > 300 bytes (description can be long)
+          const keys = Object.keys(capturedJsonResponse);
+          const hasDescription = 'description' in capturedJsonResponse && capturedJsonResponse.description;
+          const descLength = hasDescription ? String(capturedJsonResponse.description).length : 0;
+          logLine += ` :: {Candidate: ${capturedJsonResponse.title?.substring(0, 40) || 'N/A'}..., ${keys.length} fields, ${jsonSize} bytes${descLength > 0 ? `, description: ${descLength} chars` : ''}}`;
+        } else if (jsonSize > 500) {
+          // For large objects, summarize (entities, settings, etc. are usually large nested objects)
+          const keys = Object.keys(capturedJsonResponse);
+          // Check if it's a complex nested object (has nested objects/arrays)
+          const hasNestedStructures = Object.values(capturedJsonResponse).some(
+            val => typeof val === 'object' && val !== null && (Array.isArray(val) || Object.keys(val).length > 3)
+          );
+          
+          if (hasNestedStructures) {
+            // For complex nested objects (like entities with categories, entities, channels), just show summary
+            logLine += ` :: {Object with ${keys.length} keys, ${jsonSize} bytes}`;
+          } else {
+            // Simple objects: still log full JSON if small enough
+            logLine += ` :: ${jsonString}`;
+          }
+        } else {
+          // Small responses: log full JSON
+          logLine += ` :: ${jsonString}`;
+        }
       }
 
       log(logLine);
