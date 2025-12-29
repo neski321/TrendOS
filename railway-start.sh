@@ -24,3 +24,4 @@ cd ..
 # Wait for both processes
 wait $NODE_PID $PYTHON_PID
 
+
