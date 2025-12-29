@@ -2,10 +2,17 @@
 # Production start script for Python worker service on Railway
 
 # Output immediately so Railway knows the script is running
+# Use both stdout and stderr to ensure visibility
+exec >&2
 echo "=== Python Worker Start Script ==="
 echo "Script started at: $(date)"
 echo "Current directory: $(pwd)"
 echo "Script location: $0"
+echo "PATH: $PATH"
+echo "Listing current directory:"
+ls -la
+echo "Checking for start-worker.sh:"
+ls -la start-worker.sh 2>&1 || echo "start-worker.sh not found in current directory"
 
 # Enable strict error handling
 set -e
