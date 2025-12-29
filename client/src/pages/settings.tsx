@@ -45,6 +45,7 @@ export default function Settings() {
     },
     discord: {
       enabled: true,
+      webhook_url: "",
     },
     automation: {
       auto_run_on_startup: false,
@@ -72,6 +73,7 @@ export default function Settings() {
         },
         discord: {
           enabled: settings.discord?.enabled ?? true,
+          webhook_url: settings.discord?.webhook_url ?? "",
         },
         automation: {
           auto_run_on_startup: settings.automation?.auto_run_on_startup ?? false,
@@ -100,7 +102,7 @@ export default function Settings() {
     }));
   };
 
-  const updateDiscord = (field: string, value: boolean) => {
+  const updateDiscord = (field: string, value: boolean | string) => {
     setFormData(prev => ({
       ...prev,
       discord: { ...prev.discord, [field]: value }
@@ -699,8 +701,16 @@ export default function Settings() {
               
               <div className="space-y-2">
                  <Label>Webhook URL</Label>
-                 <Input type="password" value="https://discord.com/api/webhooks/..." className="font-mono text-muted-foreground" readOnly />
-                 <p className="text-xs text-muted-foreground">Configure DISCORD_WEBHOOK_URL in backend/.env</p>
+                 <Input 
+                   type="password" 
+                   value={formData.discord.webhook_url || ""} 
+                   placeholder="https://discord.com/api/webhooks/..."
+                   className="font-mono"
+                   onChange={(e) => updateDiscord("webhook_url", e.target.value)}
+                 />
+                 <p className="text-xs text-muted-foreground">
+                   Discord webhook URL for notifications. Leave empty to use environment variable.
+                 </p>
               </div>
 
               <div className="pt-2">

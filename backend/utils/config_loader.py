@@ -52,6 +52,7 @@ class LimitsConfig:
 class DiscordConfig:
     """Discord notification configuration."""
     enabled: bool
+    webhook_url: str = ""  # Optional, can be empty if using env var
 
 
 @dataclass
@@ -358,7 +359,8 @@ def load_settings_config(config_dir: Path, database_url: Optional[str] = None) -
     
     discord_data = yaml_data.get("discord", {})
     discord = DiscordConfig(
-        enabled=discord_data.get("enabled", True)
+        enabled=discord_data.get("enabled", True),
+        webhook_url=discord_data.get("webhook_url", "")
     )
     
     automation_data = yaml_data.get("automation", {})

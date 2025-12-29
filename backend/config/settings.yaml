@@ -13,6 +13,7 @@ limits:
 
 discord:
   enabled: true
+  webhook_url: ""  # Leave empty to use DISCORD_WEBHOOK_URL environment variable
 
 automation:
   auto_run_on_startup: false

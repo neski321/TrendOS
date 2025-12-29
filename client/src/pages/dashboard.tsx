@@ -6,6 +6,7 @@ import { ArrowUpRight, TrendingUp, Users, Activity, PlayCircle, Zap, Loader2 } f
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } from 'recharts';
 import { useMetrics, useTopPicks, useTriggerScan, useScanStatus } from "@/lib/api";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Link } from "wouter";
 
 export default function Dashboard() {
   const { data: metrics, isLoading: metricsLoading } = useMetrics();
@@ -192,7 +193,9 @@ export default function Dashboard() {
         <div>
            <div className="flex items-center justify-between mb-4">
               <h2 className="text-xl font-heading font-semibold">🔥 Top Clip Targets (Score &gt; 90)</h2>
-              <Button variant="ghost" className="text-xs font-mono text-muted-foreground hover:text-foreground">VIEW ALL CANDIDATES &rarr;</Button>
+              <Button variant="ghost" className="text-xs font-mono text-muted-foreground hover:text-foreground" asChild>
+                <Link href="/feed?minScore=90">VIEW ALL CANDIDATES &rarr;</Link>
+              </Button>
            </div>
            {picksLoading ? (
              <div className="flex items-center justify-center py-12">
