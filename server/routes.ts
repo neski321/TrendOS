@@ -829,15 +829,58 @@ export async function registerRoutes(
   // Get API quota usage (aggregate across all keys)
   app.get("/api/quota/usage", async (_req, res) => {
     try {
-      // Get quota usage for all API keys from the database
-      const result = await pool.query(`
-        SELECT 
-          COALESCE(SUM(quota_used), 0) as total_used,
-          COALESCE(SUM(quota_limit), 0) as total_limit,
-          COUNT(DISTINCT api_key_hash) as key_count
-        FROM quota_tracking
-        WHERE date = CURRENT_DATE
+      // First check if quota_tracking table exists
+      const tableCheck = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.tables 
+          WHERE table_name = 'quota_tracking'
+        )
       `);
+      
+      if (!tableCheck.rows[0].exists) {
+        // Table doesn't exist yet, return defaults
+        return res.json({
+          used: 0,
+          limit: 10000,
+          remaining: 10000,
+          percentage: 0,
+        });
+      }
+
+      // Check if api_key_hash column exists
+      const columnCheck = await pool.query(`
+        SELECT EXISTS (
+          SELECT FROM information_schema.columns 
+          WHERE table_name = 'quota_tracking' AND column_name = 'api_key_hash'
+        )
+      `);
+      
+      const hasApiKeyHash = columnCheck.rows[0].exists;
+      
+      // Build query based on whether api_key_hash column exists
+      let query: string;
+      if (hasApiKeyHash) {
+        query = `
+          SELECT 
+            COALESCE(SUM(quota_used), 0) as total_used,
+            COALESCE(SUM(quota_limit), 0) as total_limit,
+            COUNT(DISTINCT api_key_hash) as key_count
+          FROM quota_tracking
+          WHERE date = CURRENT_DATE
+        `;
+      } else {
+        // Fallback for older schema without api_key_hash
+        query = `
+          SELECT 
+            COALESCE(SUM(quota_used), 0) as total_used,
+            COALESCE(SUM(quota_limit), 0) as total_limit,
+            COUNT(*) as key_count
+          FROM quota_tracking
+          WHERE date = CURRENT_DATE
+        `;
+      }
+
+      const result = await pool.query(query);
 
       const totalUsed = parseInt(result.rows[0]?.total_used || "0");
       const totalLimit = parseInt(result.rows[0]?.total_limit || "0");
