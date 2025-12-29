@@ -4,12 +4,16 @@ import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { useBackendHealth } from "@/lib/api";
+import { useBackendHealth, useQuotaUsage } from "@/lib/api";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { data: health, error: healthError } = useBackendHealth();
+  const { data: quotaUsage } = useQuotaUsage();
+  
+  // Calculate percentage for progress bar (default to 0 if no data)
+  const quotaPercentage = quotaUsage?.percentage || 0;
 
   const navItems = [
     { icon: LayoutDashboard, label: "Mission Control", href: "/" },
@@ -49,7 +53,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
            <div className="flex flex-col items-end">
               <span className="text-[10px] text-muted-foreground uppercase tracking-widest font-mono">API Usage</span>
               <div className="w-32 h-1.5 bg-muted rounded-full mt-1 overflow-hidden">
-                 <div className="h-full bg-gradient-to-r from-primary to-secondary w-[82%]" />
+                 <div 
+                   className="h-full bg-gradient-to-r from-primary to-secondary transition-all duration-500"
+                   style={{ width: `${Math.min(quotaPercentage, 100)}%` }}
+                 />
               </div>
            </div>
            <div className="h-8 w-px bg-white/10" />

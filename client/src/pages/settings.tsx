@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Separator } from "@/components/ui/separator";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Save, MessageSquare, Loader2, Plus, X } from "lucide-react";
 import { useTestDiscord, useSettings, useUpdateSettings, useEntities, useUpdateEntities, type EntitiesConfig, type CategoryConfig } from "@/lib/api";
 
@@ -204,11 +205,11 @@ export default function Settings() {
 
   return (
     <Layout>
-       <div className="max-w-4xl mx-auto space-y-8">
+       <div className="max-w-4xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-heading font-bold mb-1">Configuration</h1>
-            <p className="text-muted-foreground text-sm">Manage entities, scoring weights, and notification settings.</p>
+            <h1 className="text-3xl font-heading font-bold mb-1">Settings</h1>
+            <p className="text-muted-foreground text-sm">Manage entities, scoring, and automation settings.</p>
           </div>
           <Button 
             className="bg-primary text-black hover:bg-primary/90"
@@ -228,7 +229,30 @@ export default function Settings() {
           </Button>
         </div>
 
-        <div className="grid gap-6">
+        <Tabs defaultValue="entities" className="w-full">
+          <TabsList className="w-full h-11 bg-muted/30 rounded-lg p-1 grid grid-cols-3 gap-1">
+            <TabsTrigger 
+              value="entities" 
+              className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=inactive]:text-muted-foreground rounded-md font-medium transition-colors"
+            >
+              Entities
+            </TabsTrigger>
+            <TabsTrigger 
+              value="scoring"
+              className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=inactive]:text-muted-foreground rounded-md font-medium transition-colors"
+            >
+              Scoring
+            </TabsTrigger>
+            <TabsTrigger 
+              value="automation"
+              className="data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=inactive]:text-muted-foreground rounded-md font-medium transition-colors"
+            >
+              Automation
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="entities" className="mt-6">
+            <div className="grid gap-6">
           {/* Entity Configuration */}
           <Card>
             <CardHeader>
@@ -526,7 +550,11 @@ export default function Settings() {
               )}
             </CardContent>
           </Card>
+            </div>
+          </TabsContent>
 
+          <TabsContent value="scoring" className="mt-6">
+            <div className="grid gap-6">
           {/* Scoring Configuration */}
           <Card>
             <CardHeader>
@@ -568,6 +596,85 @@ export default function Settings() {
                   />
                   <p className="text-[10px] text-muted-foreground">Favors fast-growing views.</p>
                 </div>
+                <div className="space-y-2">
+                  <Label>Cross-Platform Weight</Label>
+                  <Input 
+                    type="number" 
+                    value={formData.scoring.cross_platform_weight} 
+                    step="0.1" 
+                    className="font-mono"
+                    onChange={(e) => updateScoring("cross_platform_weight", parseFloat(e.target.value) || 0)}
+                  />
+                  <p className="text-[10px] text-muted-foreground">Favors videos trending elsewhere.</p>
+                </div>
+                <div className="space-y-2">
+                  <Label>Entity Priority Weight</Label>
+                  <Input 
+                    type="number" 
+                    value={formData.scoring.entity_priority_weight} 
+                    step="0.1" 
+                    className="font-mono"
+                    onChange={(e) => updateScoring("entity_priority_weight", parseFloat(e.target.value) || 0)}
+                  />
+                  <p className="text-[10px] text-muted-foreground">Favors high-priority entities.</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Limits Configuration */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Limits & Filters</CardTitle>
+              <CardDescription>Configure candidate limits and filtering criteria.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                 <div className="space-y-2">
+                    <Label>Max Candidates per Category</Label>
+                    <Input 
+                      type="number" 
+                      value={formData.limits.max_candidates_per_category} 
+                      className="font-mono"
+                      onChange={(e) => updateLimits("max_candidates_per_category", parseInt(e.target.value) || 0)}
+                    />
+                    <p className="text-xs text-muted-foreground">Maximum candidates saved per category per scan</p>
+                 </div>
+                 <div className="space-y-2">
+                    <Label>Top N for Discord</Label>
+                    <Input 
+                      type="number" 
+                      value={formData.limits.top_n_per_category_for_discord} 
+                      className="font-mono"
+                      onChange={(e) => updateLimits("top_n_per_category_for_discord", parseInt(e.target.value) || 0)}
+                    />
+                    <p className="text-xs text-muted-foreground">Top candidates sent to Discord per category</p>
+                 </div>
+              </div>
+
+              <Separator />
+
+              <div className="grid grid-cols-2 gap-4">
+                 <div className="space-y-2">
+                    <Label>Min Video Duration (seconds)</Label>
+                    <Input 
+                      type="number" 
+                      value={formData.limits.min_video_duration_seconds} 
+                      className="font-mono"
+                      onChange={(e) => updateLimits("min_video_duration_seconds", parseInt(e.target.value) || 0)}
+                    />
+                    <p className="text-xs text-muted-foreground">Minimum video length to consider</p>
+                 </div>
+                 <div className="space-y-2">
+                    <Label>Max Video Duration (seconds)</Label>
+                    <Input 
+                      type="number" 
+                      value={formData.limits.max_video_duration_seconds} 
+                      className="font-mono"
+                      onChange={(e) => updateLimits("max_video_duration_seconds", parseInt(e.target.value) || 0)}
+                    />
+                    <p className="text-xs text-muted-foreground">Maximum video length to consider</p>
+                 </div>
               </div>
             </CardContent>
           </Card>
@@ -619,32 +726,13 @@ export default function Settings() {
                   Send a test message to verify your Discord webhook is working.
                 </p>
               </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                 <div className="space-y-2">
-                    <Label>Max Candidates per Category</Label>
-                    <Input 
-                      type="number" 
-                      value={formData.limits.max_candidates_per_category} 
-                      className="font-mono"
-                      onChange={(e) => updateLimits("max_candidates_per_category", parseInt(e.target.value) || 0)}
-                    />
-                    <p className="text-xs text-muted-foreground">Maximum candidates saved per category per scan</p>
-                 </div>
-                 <div className="space-y-2">
-                    <Label>Top N for Discord</Label>
-                    <Input 
-                      type="number" 
-                      value={formData.limits.top_n_per_category_for_discord} 
-                      className="font-mono"
-                      onChange={(e) => updateLimits("top_n_per_category_for_discord", parseInt(e.target.value) || 0)}
-                    />
-                    <p className="text-xs text-muted-foreground">Top candidates sent to Discord per category</p>
-                 </div>
-              </div>
             </CardContent>
           </Card>
+            </div>
+          </TabsContent>
 
+          <TabsContent value="automation" className="mt-6">
+            <div className="grid gap-6">
           {/* Automation Configuration */}
           <Card>
             <CardHeader>
@@ -697,7 +785,9 @@ export default function Settings() {
               )}
             </CardContent>
           </Card>
-        </div>
+            </div>
+          </TabsContent>
+        </Tabs>
        </div>
     </Layout>
   );

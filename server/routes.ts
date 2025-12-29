@@ -43,70 +43,85 @@ export async function registerRoutes(
       const venvPython = path.join(backendDir, "venv", "bin", "python3");
       
       if (!fs.existsSync(pythonScript)) {
+        console.error(`[SCAN] Python script not found at: ${pythonScript}`);
         return res.status(500).json({
           success: false,
-          error: "Python scanner script not found"
+          error: `Python scanner script not found at ${pythonScript}`
         });
       }
       
       // Use venv Python if available, otherwise use system python3
-      const pythonExec = fs.existsSync(venvPython) ? venvPython : "python3";
+      // This matches the behavior of scheduler._run_scan() which uses sys.executable
+      let pythonExec = "python3";
+      if (fs.existsSync(venvPython)) {
+        pythonExec = venvPython;
+      }
       
-      // Spawn Python process (non-blocking)
+      // Spawn Python process matching scheduler._run_scan() behavior:
+      // - detached process (like start_new_session=True)
+      // - inherits environment from parent (no explicit env passing)
+      // - stdout/stderr go to system logs (not captured by Node.js, but still visible in system logs)
+      // Note: Python's logging writes to stderr, so we let it through to system logs
+      // Database logs via DatabaseLogHandler still work regardless
       const pythonProcess = spawn(pythonExec, ["main.py"], {
         cwd: backendDir,
-        env: {
-          ...process.env,
-          // Ensure Python can access environment variables
-          PATH: process.env.PATH || "",
-        },
-        stdio: ["ignore", "pipe", "pipe"], // Ignore stdin, capture stdout/stderr
+        // Don't pass explicit env - let it inherit from Node.js process (like Python subprocess does)
+        stdio: "inherit", // Let stdout/stderr go to system logs (Railway/console will capture them)
+        detached: true, // Detached process like start_new_session=True
       });
       
-      let stdout = "";
-      let stderr = "";
+      // Unref the process so Node.js can exit independently (matches detached behavior)
+      pythonProcess.unref();
       
-      pythonProcess.stdout?.on("data", (data) => {
-        stdout += data.toString();
-      });
-      
-      pythonProcess.stderr?.on("data", (data) => {
-        stderr += data.toString();
-      });
-      
-      // Don't wait for process to complete - return immediately
+      // Handle spawn errors (e.g., executable not found)
       pythonProcess.on("error", (error) => {
-        console.error("Error spawning Python process:", error);
+        console.error(`[SCAN] Error spawning Python process: ${error.message}`);
+        return res.status(500).json({
+          success: false,
+          error: `Failed to start scan process: ${error.message}`,
+          details: {
+            pythonExec,
+            backendDir,
+            scriptExists: fs.existsSync(pythonScript),
+          }
+        });
       });
+      
+      // Wait a moment to check if spawn failed immediately
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
+      if (!pythonProcess.pid) {
+        return res.status(500).json({
+          success: false,
+          error: "Failed to spawn Python process (no PID assigned)",
+          details: {
+            pythonExec,
+            backendDir,
+            scriptExists: fs.existsSync(pythonScript),
+          }
+        });
+      }
       
       // Store process info for potential status checking
       const processId = pythonProcess.pid;
+      console.log(`[SCAN] Scan process spawned successfully (PID: ${processId})`);
       
+      // Return success immediately (don't wait for process to complete)
+      // Note: We don't capture stdout/stderr or log exit codes to match scheduler._run_scan() behavior
       res.json({
         success: true,
         message: "Scan triggered successfully",
         timestamp: new Date().toISOString(),
         processId: processId,
-        note: "Scan is running in the background. Check logs for progress."
-      });
-      
-      // Log completion in background (don't block response)
-      pythonProcess.on("exit", (code) => {
-        if (code === 0) {
-          console.log(`[SCAN] Scan completed successfully (PID: ${processId})`);
-        } else {
-          console.error(`[SCAN] Scan failed with code ${code} (PID: ${processId})`);
-          if (stderr) {
-            console.error(`[SCAN] Error output: ${stderr.substring(0, 500)}`);
-          }
-        }
+        note: "Scan is running in the background. Check the dashboard for real-time progress."
       });
       
     } catch (error) {
-      console.error("Error triggering scan:", error);
+      console.error("[SCAN] Error triggering scan:", error);
       res.status(500).json({
         success: false,
-        error: error instanceof Error ? error.message : "Unknown error"
+        error: error instanceof Error ? error.message : "Unknown error",
+        details: error instanceof Error ? error.stack : undefined
       });
     }
   });
@@ -205,6 +220,52 @@ export async function registerRoutes(
         res.status(503).json({ error: "Database connection failed. Please check your DATABASE_URL." });
       } else {
         res.status(500).json({ error: `Failed to fetch candidates: ${errorMessage}` });
+      }
+    }
+  });
+
+  // Get single candidate by ID with full details
+  app.get("/api/candidates/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const result = await pool.query(`
+        SELECT 
+          video_id as id,
+          title,
+          COALESCE(channel_title, channel_id) as "channel",
+          channel_id as "channelId",
+          channel_title as "channelTitle",
+          published_at as "publishedAt",
+          views,
+          likes,
+          comments,
+          duration_seconds as "durationSeconds",
+          COALESCE(ROUND(views::numeric / NULLIF(EXTRACT(EPOCH FROM (NOW() - published_at)) / 3600, 0), 2), 0) as velocity,
+          score,
+          category,
+          COALESCE(thumbnail_url, '') as thumbnail,
+          entity,
+          url,
+          description,
+          run_date as "runDate"
+        FROM trending_videos
+        WHERE video_id = $1
+        LIMIT 1
+      `, [id]);
+      
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: "Candidate not found" });
+      }
+      
+      res.json(result.rows[0]);
+    } catch (error) {
+      console.error("Error fetching candidate:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error";
+      if (errorMessage.includes("connect") || errorMessage.includes("ECONNREFUSED")) {
+        res.status(503).json({ error: "Database connection failed. Please check your DATABASE_URL." });
+      } else {
+        res.status(500).json({ error: `Failed to fetch candidate: ${errorMessage}` });
       }
     }
   });
@@ -673,6 +734,135 @@ export async function registerRoutes(
       res.status(500).json({ 
         success: false,
         error: error instanceof Error ? error.message : "Unknown error"
+      });
+    }
+  });
+
+  // Get current scan status
+  app.get("/api/scan/status", async (_req, res) => {
+    try {
+      const result = await pool.query(`
+        SELECT 
+          scan_id,
+          status,
+          started_at,
+          completed_at,
+          error_message,
+          progress_message,
+          candidates_found,
+          candidates_saved,
+          created_at,
+          updated_at
+        FROM scan_status
+        WHERE status = 'running'
+        ORDER BY started_at DESC
+        LIMIT 1
+      `);
+
+      if (result.rows.length > 0) {
+        res.json({
+          isRunning: true,
+          scan: result.rows[0],
+        });
+      } else {
+        // Check for most recent scan (completed or failed)
+        const recentResult = await pool.query(`
+          SELECT 
+            scan_id,
+            status,
+            started_at,
+            completed_at,
+            error_message,
+            progress_message,
+            candidates_found,
+            candidates_saved,
+            created_at,
+            updated_at
+          FROM scan_status
+          ORDER BY started_at DESC
+          LIMIT 1
+        `);
+
+        res.json({
+          isRunning: false,
+          scan: recentResult.rows.length > 0 ? recentResult.rows[0] : null,
+        });
+      }
+    } catch (error) {
+      console.error("Error getting scan status:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // Get recent scans
+  app.get("/api/scan/history", async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 10;
+      const result = await pool.query(`
+        SELECT 
+          scan_id,
+          status,
+          started_at,
+          completed_at,
+          error_message,
+          progress_message,
+          candidates_found,
+          candidates_saved,
+          created_at,
+          updated_at
+        FROM scan_status
+        ORDER BY started_at DESC
+        LIMIT $1
+      `, [limit]);
+
+      res.json(result.rows);
+    } catch (error) {
+      console.error("Error getting scan history:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // Get API quota usage (aggregate across all keys)
+  app.get("/api/quota/usage", async (_req, res) => {
+    try {
+      // Get quota usage for all API keys from the database
+      const result = await pool.query(`
+        SELECT 
+          COALESCE(SUM(quota_used), 0) as total_used,
+          COALESCE(SUM(quota_limit), 0) as total_limit,
+          COUNT(DISTINCT api_key_hash) as key_count
+        FROM quota_tracking
+        WHERE date = CURRENT_DATE
+      `);
+
+      const totalUsed = parseInt(result.rows[0]?.total_used || "0");
+      const totalLimit = parseInt(result.rows[0]?.total_limit || "0");
+      const keyCount = parseInt(result.rows[0]?.key_count || "0");
+      
+      // If no quota tracking exists yet, default to 10,000 per key (estimate 1 key)
+      const defaultLimitPerKey = 10000;
+      const estimatedKeys = keyCount > 0 ? keyCount : 1;
+      const finalLimit = totalLimit > 0 ? totalLimit : (estimatedKeys * defaultLimitPerKey);
+      const percentage = finalLimit > 0 ? Math.round((totalUsed / finalLimit) * 100) : 0;
+
+      res.json({
+        used: totalUsed,
+        limit: finalLimit,
+        remaining: finalLimit - totalUsed,
+        percentage: Math.min(percentage, 100), // Cap at 100%
+      });
+    } catch (error) {
+      console.error("Error getting quota usage:", error);
+      // Return default values on error
+      res.json({
+        used: 0,
+        limit: 10000,
+        remaining: 10000,
+        percentage: 0,
       });
     }
   });
