@@ -51,9 +51,9 @@ export async function registerRoutes(
         });
       }
       
-      // Find Python executable - same logic as start-worker.sh
+      // Find Python executable - same logic as start-unified.sh
       let pythonExec: string | null = null;
-      let systemPython: string | null = null; // Store system Python for venv creation
+      let systemPythonForVenv: string | null = null; // Store system Python for venv creation
       
       // 1. Try venv Python first
       if (fs.existsSync(venvPython)) {
