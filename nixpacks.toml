@@ -12,9 +12,9 @@ cmds = [
 [phases.build]
 cmds = [
   "npm run build",
-  "chmod +x railway-build.sh railway-run.sh",
+  "chmod +x railway-build.sh railway-start.sh",
   "./railway-build.sh"
 ]
 
 [start]
-cmd = "./railway-run.sh"
+cmd = "./railway-start.sh"
