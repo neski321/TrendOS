@@ -78,6 +78,10 @@ fi
 echo "Using Python: $PYTHON_EXEC"
 $PYTHON_EXEC --version
 
+# Export Python path for Node.js to use (for manual scan trigger)
+export PYTHON_EXECUTABLE="$PYTHON_EXEC"
+echo "Exported PYTHON_EXECUTABLE=$PYTHON_EXECUTABLE for Node.js"
+
 # Check if Node.js server build exists
 if [ ! -f "dist/index.cjs" ]; then
     echo "WARNING: dist/index.cjs not found, attempting to build..."
