@@ -16,16 +16,19 @@ export PYTHONDONTWRITEBYTECODE=1
 echo "🐍 Checking Python version..."
 python3 --version || python --version
 
-# Install/upgrade pip
+# Install/upgrade pip (Railway's Python might not have pip installed)
 echo ""
-echo "📦 Upgrading pip..."
-python3 -m pip install --upgrade pip
+echo "📦 Setting up pip..."
+# First ensure pip is installed using ensurepip
+python3 -m ensurepip --upgrade 2>/dev/null || echo "ensurepip not needed, pip already available"
+# Then upgrade pip
+python3 -m pip install --upgrade pip --quiet || pip install --upgrade pip --quiet
 
 # Install Python dependencies
 echo ""
 echo "📦 Installing Python dependencies..."
 cd backend
-python3 -m pip install -r requirements.txt
+python3 -m pip install -r requirements.txt --quiet || pip install -r requirements.txt --quiet
 cd ..
 
 echo ""
