@@ -33,7 +33,7 @@ export async function registerRoutes(
   // Trigger scan endpoint
   app.post("/api/scan/trigger", async (_req, res) => {
     try {
-      const { spawn } = await import("child_process");
+      const { spawn, execSync } = await import("child_process");
       const path = await import("path");
       const fs = await import("fs");
       
@@ -41,6 +41,7 @@ export async function registerRoutes(
       const backendDir = path.resolve(process.cwd(), "backend");
       const pythonScript = path.join(backendDir, "main.py");
       const venvPython = path.join(backendDir, "venv", "bin", "python3");
+      const venvPythonAlt = path.join(backendDir, "venv", "bin", "python");
       
       if (!fs.existsSync(pythonScript)) {
         console.error(`[SCAN] Python script not found at: ${pythonScript}`);
@@ -50,11 +51,99 @@ export async function registerRoutes(
         });
       }
       
-      // Use venv Python if available, otherwise use system python3
-      // This matches the behavior of scheduler._run_scan() which uses sys.executable
-      let pythonExec = "python3";
+      // Find Python executable - same logic as start-worker.sh
+      let pythonExec: string | null = null;
+      
+      // 1. Try venv Python first
       if (fs.existsSync(venvPython)) {
         pythonExec = venvPython;
+        console.log(`[SCAN] Using venv Python: ${pythonExec}`);
+      } else if (fs.existsSync(venvPythonAlt)) {
+        pythonExec = venvPythonAlt;
+        console.log(`[SCAN] Using venv Python (alt): ${pythonExec}`);
+      } else {
+        // 2. Try to find Python in PATH
+        try {
+          const python3Path = execSync("which python3", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+          if (python3Path && fs.existsSync(python3Path)) {
+            pythonExec = python3Path;
+            console.log(`[SCAN] Using Python from PATH: ${pythonExec}`);
+          }
+        } catch (e) {
+          // python3 not in PATH, continue to next method
+        }
+        
+        // 3. Try to find Python in nix store (Railway uses nixpacks)
+        if (!pythonExec) {
+          try {
+            const nixPython = execSync(
+              'find /nix/store -name python3 -type f 2>/dev/null | grep -E "python311|python3" | head -1',
+              { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "/bin/bash" }
+            ).trim();
+            if (nixPython && fs.existsSync(nixPython)) {
+              pythonExec = nixPython;
+              console.log(`[SCAN] Using Python from nix store: ${pythonExec}`);
+            }
+          } catch (e) {
+            // nix store search failed, continue
+          }
+        }
+        
+        // 4. Last resort: try common locations
+        if (!pythonExec) {
+          const commonPaths = [
+            "/usr/bin/python3",
+            "/usr/local/bin/python3",
+            "/usr/bin/python",
+            "/usr/local/bin/python",
+          ];
+          for (const pythonPath of commonPaths) {
+            if (fs.existsSync(pythonPath)) {
+              pythonExec = pythonPath;
+              console.log(`[SCAN] Using Python from common path: ${pythonExec}`);
+              break;
+            }
+          }
+        }
+        
+        // 5. Final fallback to "python3" (may fail, but we'll catch the error)
+        if (!pythonExec) {
+          pythonExec = "python3";
+          console.log(`[SCAN] Falling back to 'python3' command (may not be in PATH)`);
+        }
+      }
+      
+      if (!pythonExec) {
+        return res.status(500).json({
+          success: false,
+          error: "Failed to locate Python executable",
+          details: {
+            backendDir,
+            scriptExists: fs.existsSync(pythonScript),
+            venvExists: fs.existsSync(path.join(backendDir, "venv")),
+          }
+        });
+      }
+      
+      // Verify Python executable is actually executable
+      try {
+        const pythonVersion = execSync(`"${pythonExec}" --version`, { 
+          encoding: "utf-8", 
+          stdio: ["ignore", "pipe", "ignore"],
+          timeout: 5000 
+        }).trim();
+        console.log(`[SCAN] Verified Python: ${pythonVersion}`);
+      } catch (e) {
+        return res.status(500).json({
+          success: false,
+          error: `Python executable found but cannot be executed: ${pythonExec}`,
+          details: {
+            pythonExec,
+            backendDir,
+            scriptExists: fs.existsSync(pythonScript),
+            error: e instanceof Error ? e.message : String(e),
+          }
+        });
       }
       
       // Spawn Python process matching scheduler._run_scan() behavior:
@@ -76,15 +165,8 @@ export async function registerRoutes(
       // Handle spawn errors (e.g., executable not found)
       pythonProcess.on("error", (error) => {
         console.error(`[SCAN] Error spawning Python process: ${error.message}`);
-        return res.status(500).json({
-          success: false,
-          error: `Failed to start scan process: ${error.message}`,
-          details: {
-            pythonExec,
-            backendDir,
-            scriptExists: fs.existsSync(pythonScript),
-          }
-        });
+        // Note: This error handler may not be called if we already returned an error above
+        // But it's here as a safety net
       });
       
       // Wait a moment to check if spawn failed immediately
