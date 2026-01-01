@@ -374,3 +374,4 @@ class ScanStatusTracker:
             cursor.close()
             conn.close()
 
+

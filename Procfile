@@ -1,3 +1,1 @@
-web: ./start-unified.sh
-
-
+web: ./railway-run.sh
