@@ -53,6 +53,7 @@ export async function registerRoutes(
       
       // Find Python executable - same logic as start-worker.sh
       let pythonExec: string | null = null;
+      let systemPython: string | null = null; // Store system Python for venv creation
       
       // 1. Try venv Python first
       if (fs.existsSync(venvPython)) {
@@ -62,6 +63,9 @@ export async function registerRoutes(
         pythonExec = venvPythonAlt;
         console.log(`[SCAN] Using venv Python (alt): ${pythonExec}`);
       } else {
+        // Venv doesn't exist - we'll need to find system Python first
+        console.log(`[SCAN] Venv not found at ${venvPython} or ${venvPythonAlt}, searching for system Python...`);
+        
         // 2. Try to find Python in PATH
         try {
           const python3Path = execSync("which python3", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
@@ -73,19 +77,58 @@ export async function registerRoutes(
           // python3 not in PATH, continue to next method
         }
         
-        // 3. Try to find Python in nix store (Railway uses nixpacks)
+        // 3. Try to find Python in nix store (Railway uses nixpacks) - match worker script logic
         if (!pythonExec) {
           try {
-            const nixPython = execSync(
+            // Strategy 1: Find python3 in nix store (same as worker script)
+            const nixPython1 = execSync(
               'find /nix/store -name python3 -type f 2>/dev/null | grep -E "python311|python3" | head -1',
-              { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "/bin/bash" }
+              { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "/bin/bash", timeout: 10000 }
             ).trim();
-            if (nixPython && fs.existsSync(nixPython)) {
-              pythonExec = nixPython;
-              console.log(`[SCAN] Using Python from nix store: ${pythonExec}`);
+            if (nixPython1 && fs.existsSync(nixPython1)) {
+              try {
+                execSync(`"${nixPython1}" --version`, { 
+                  encoding: "utf-8", 
+                  stdio: ["ignore", "pipe", "ignore"],
+                  timeout: 3000 
+                });
+                pythonExec = nixPython1;
+                console.log(`[SCAN] Using Python from nix store (method 1): ${pythonExec}`);
+              } catch (e) {
+                // Not executable, try next method
+              }
+            }
+            
+            // Strategy 2: Try glob pattern matching (same as worker script fallback)
+            if (!pythonExec) {
+              try {
+                const nixGlobResults = execSync(
+                  'ls -d /nix/store/*/bin/python3 /nix/store/*/bin/python 2>/dev/null | head -1',
+                  { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "/bin/bash", timeout: 10000 }
+                ).trim();
+                if (nixGlobResults) {
+                  const nixPython2 = nixGlobResults.split('\n')[0].trim();
+                  if (nixPython2 && fs.existsSync(nixPython2)) {
+                    try {
+                      execSync(`"${nixPython2}" --version`, { 
+                        encoding: "utf-8", 
+                        stdio: ["ignore", "pipe", "ignore"],
+                        timeout: 3000 
+                      });
+                      pythonExec = nixPython2;
+                      console.log(`[SCAN] Using Python from nix store (method 2): ${pythonExec}`);
+                    } catch (e) {
+                      // Not executable
+                    }
+                  }
+                }
+              } catch (e) {
+                // Glob search failed
+              }
             }
           } catch (e) {
-            // nix store search failed, continue
+            // All nix store searches failed
+            console.log(`[SCAN] Nix store search failed: ${e instanceof Error ? e.message : String(e)}`);
           }
         }
         
@@ -106,10 +149,21 @@ export async function registerRoutes(
           }
         }
         
-        // 5. Final fallback to "python3" (may fail, but we'll catch the error)
+        // 5. Try to use the Python from the worker process environment
+        // Check if there's a PYTHON environment variable or check process.env
+        if (!pythonExec) {
+          const envPython = process.env.PYTHON || process.env.PYTHON3;
+          if (envPython && fs.existsSync(envPython)) {
+            pythonExec = envPython;
+            console.log(`[SCAN] Using Python from environment variable: ${pythonExec}`);
+          }
+        }
+        
+        // 6. Final fallback to "python3" (may fail, but we'll catch the error)
         if (!pythonExec) {
           pythonExec = "python3";
-          console.log(`[SCAN] Falling back to 'python3' command (may not be in PATH)`);
+          console.log(`[SCAN] WARNING: Falling back to 'python3' command (may not be in PATH)`);
+          console.log(`[SCAN] This will likely fail on Railway. Venv should exist at: ${path.join(backendDir, "venv")}`);
         }
       }
       
