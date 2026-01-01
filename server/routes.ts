@@ -66,45 +66,53 @@ export async function registerRoutes(
         // Venv doesn't exist - we'll need to find system Python first
         console.log(`[SCAN] Venv not found at ${venvPython} or ${venvPythonAlt}, searching for system Python...`);
         
-        // 2. Try to find Python in PATH
+        // 2. Try to find Python in PATH (store for venv creation)
         try {
           const python3Path = execSync("which python3", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
           if (python3Path && fs.existsSync(python3Path)) {
-            pythonExec = python3Path;
-            console.log(`[SCAN] Using Python from PATH: ${pythonExec}`);
+            systemPythonForVenv = python3Path;
+            console.log(`[SCAN] Found system Python in PATH: ${systemPythonForVenv}`);
+            // Don't set pythonExec yet - try nix store first, then use this
           }
         } catch (e) {
           // python3 not in PATH, continue to next method
         }
         
-        // 3. Try to find Python in nix store (Railway uses nixpacks) - match worker script logic
+        // 3. Try to find Python in nix store FIRST (Railway uses nixpacks) - this is most reliable
+        // Prioritize nix store over PATH since Railway uses nixpacks
         if (!pythonExec) {
+          console.log(`[SCAN] Searching nix store for Python (Railway uses nixpacks)...`);
           try {
-            // Strategy 1: Find python3 in nix store (same as worker script)
-            const nixPython1 = execSync(
-              'find /nix/store -name python3 -type f 2>/dev/null | grep -E "python311|python3" | head -1',
-              { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "/bin/bash", timeout: 10000 }
-            ).trim();
-            if (nixPython1 && fs.existsSync(nixPython1)) {
-              try {
-                execSync(`"${nixPython1}" --version`, { 
-                  encoding: "utf-8", 
-                  stdio: ["ignore", "pipe", "ignore"],
-                  timeout: 3000 
-                });
-                pythonExec = nixPython1;
-                console.log(`[SCAN] Using Python from nix store (method 1): ${pythonExec}`);
-              } catch (e) {
-                // Not executable, try next method
+            // Strategy 1: Find python3 in nix store (same as unified script)
+            try {
+              const nixPython1 = execSync(
+                'find /nix/store -name python3 -type f 2>/dev/null | grep -E "python311|python3" | head -1',
+                { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "/bin/bash", timeout: 15000 }
+              ).trim();
+              if (nixPython1 && fs.existsSync(nixPython1)) {
+                try {
+                  execSync(`"${nixPython1}" --version`, { 
+                    encoding: "utf-8", 
+                    stdio: ["ignore", "pipe", "ignore"],
+                    timeout: 5000 
+                  });
+                  pythonExec = nixPython1;
+                  systemPythonForVenv = nixPython1; // Store for venv creation
+                  console.log(`[SCAN] ✓ Found Python in nix store (method 1): ${pythonExec}`);
+                } catch (e) {
+                  console.log(`[SCAN] Python found but not executable: ${nixPython1}`);
+                }
               }
+            } catch (e) {
+              console.log(`[SCAN] Nix store find failed: ${e instanceof Error ? e.message : String(e)}`);
             }
             
-            // Strategy 2: Try glob pattern matching (same as worker script fallback)
+            // Strategy 2: Try glob pattern matching (same as unified script fallback)
             if (!pythonExec) {
               try {
                 const nixGlobResults = execSync(
                   'ls -d /nix/store/*/bin/python3 /nix/store/*/bin/python 2>/dev/null | head -1',
-                  { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "/bin/bash", timeout: 10000 }
+                  { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"], shell: "/bin/bash", timeout: 15000 }
                 ).trim();
                 if (nixGlobResults) {
                   const nixPython2 = nixGlobResults.split('\n')[0].trim();
@@ -113,22 +121,22 @@ export async function registerRoutes(
                       execSync(`"${nixPython2}" --version`, { 
                         encoding: "utf-8", 
                         stdio: ["ignore", "pipe", "ignore"],
-                        timeout: 3000 
+                        timeout: 5000 
                       });
                       pythonExec = nixPython2;
-                      console.log(`[SCAN] Using Python from nix store (method 2): ${pythonExec}`);
+                      systemPythonForVenv = nixPython2; // Store for venv creation
+                      console.log(`[SCAN] ✓ Found Python in nix store (method 2): ${pythonExec}`);
                     } catch (e) {
-                      // Not executable
+                      console.log(`[SCAN] Python found but not executable: ${nixPython2}`);
                     }
                   }
                 }
               } catch (e) {
-                // Glob search failed
+                console.log(`[SCAN] Nix store glob search failed: ${e instanceof Error ? e.message : String(e)}`);
               }
             }
           } catch (e) {
-            // All nix store searches failed
-            console.log(`[SCAN] Nix store search failed: ${e instanceof Error ? e.message : String(e)}`);
+            console.log(`[SCAN] All nix store searches failed: ${e instanceof Error ? e.message : String(e)}`);
           }
         }
         
@@ -159,7 +167,58 @@ export async function registerRoutes(
           }
         }
         
-        // 6. Final fallback to "python3" (may fail, but we'll catch the error)
+        // 6. Use system Python we found earlier (if any)
+        if (!pythonExec && systemPythonForVenv) {
+          pythonExec = systemPythonForVenv;
+          console.log(`[SCAN] Using system Python from earlier search: ${pythonExec}`);
+        }
+        
+        // 7. Try to create venv if we have system Python but no venv
+        if (!fs.existsSync(path.join(backendDir, "venv")) && pythonExec && pythonExec !== "python3") {
+          console.log(`[SCAN] Venv doesn't exist, attempting to create it at ${path.join(backendDir, "venv")}...`);
+          try {
+            execSync(`"${pythonExec}" -m venv "${path.join(backendDir, "venv")}"`, {
+              encoding: "utf-8",
+              stdio: ["ignore", "pipe", "pipe"],
+              timeout: 30000,
+              cwd: process.cwd(),
+            });
+            console.log(`[SCAN] ✓ Venv created successfully`);
+            
+            // Install requirements
+            const venvPythonPath = path.join(backendDir, "venv", "bin", "python3");
+            if (fs.existsSync(venvPythonPath)) {
+              console.log(`[SCAN] Installing Python dependencies (this may take a while)...`);
+              try {
+                execSync(`"${venvPythonPath}" -m pip install --upgrade pip`, {
+                  encoding: "utf-8",
+                  stdio: ["ignore", "pipe", "pipe"],
+                  timeout: 60000,
+                  cwd: path.join(process.cwd(), backendDir),
+                });
+                execSync(`"${venvPythonPath}" -m pip install -r requirements.txt`, {
+                  encoding: "utf-8",
+                  stdio: ["ignore", "pipe", "pipe"],
+                  timeout: 300000, // 5 minutes for pip install
+                  cwd: path.join(process.cwd(), backendDir),
+                });
+                console.log(`[SCAN] ✓ Dependencies installed`);
+                
+                // Use venv Python now
+                pythonExec = venvPythonPath;
+                console.log(`[SCAN] Now using venv Python: ${pythonExec}`);
+              } catch (pipError) {
+                console.error(`[SCAN] Failed to install dependencies: ${pipError instanceof Error ? pipError.message : String(pipError)}`);
+                // Continue with system Python - dependencies might already be installed
+              }
+            }
+          } catch (venvError) {
+            console.error(`[SCAN] Failed to create venv: ${venvError instanceof Error ? venvError.message : String(venvError)}`);
+            // Continue with system Python
+          }
+        }
+        
+        // 8. Final fallback to "python3" (may fail, but we'll catch the error)
         if (!pythonExec) {
           pythonExec = "python3";
           console.log(`[SCAN] WARNING: Falling back to 'python3' command (may not be in PATH)`);

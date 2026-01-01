@@ -7,9 +7,10 @@ nixPkgs = ["nodejs-18_x", "python311"]
 [phases.install]
 cmds = [
   "npm install",
-  "cd backend && python3 -m venv venv",
-  "cd backend && source venv/bin/activate && python3 -m pip install --upgrade pip",
-  "cd backend && source venv/bin/activate && python3 -m pip install -r requirements.txt"
+  "bash -c 'PYTHON=$(find /nix/store -name python3 -type f 2>/dev/null | grep -E \"python311|python3\" | head -1); if [ -z \"$PYTHON\" ]; then PYTHON=python3; fi; echo \"Using Python: $PYTHON\"; cd backend && $PYTHON -m venv venv'",
+  "cd backend && source venv/bin/activate && python -m pip install --upgrade pip",
+  "cd backend && source venv/bin/activate && python -m pip install -r requirements.txt",
+  "test -d backend/venv && echo '✓ Venv created successfully' || (echo '✗ Venv creation failed, will be created at runtime' && cd backend && python3 -m venv venv 2>/dev/null || true)"
 ]
 
 [phases.build]
