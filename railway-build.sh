@@ -16,12 +16,12 @@ export PYTHONDONTWRITEBYTECODE=1
 echo "🐍 Checking Python version..."
 python3 --version || python --version
 
-# Install Python dependencies
+# Install Python dependencies (Nixpacks also uses externally-managed Python)
 echo ""
 echo "📦 Installing Python dependencies..."
 cd backend
-pip install --upgrade pip
-pip install -r requirements.txt
+pip install --upgrade pip --break-system-packages
+pip install -r requirements.txt --break-system-packages
 cd ..
 
 echo ""
