@@ -121,9 +121,13 @@ export async function registerRoutes(
       // - stdout/stderr go to system logs (not captured by Node.js, but still visible in system logs)
       // Note: Python's logging writes to stderr, so we let it through to system logs
       // Database logs via DatabaseLogHandler still work regardless
+      // Spawn Python process with LD_LIBRARY_PATH for numpy/pandas C extensions
       const pythonProcess = spawn(pythonExec, ["main.py"], {
         cwd: backendDir,
-        // Don't pass explicit env - let it inherit from Node.js process (like Python subprocess does)
+        env: {
+          ...process.env,
+          LD_LIBRARY_PATH: "/nix/store/*-gcc-*/lib:/nix/store/*-glibc-*/lib:" + (process.env.LD_LIBRARY_PATH || "")
+        },
         stdio: "inherit", // Let stdout/stderr go to system logs (Railway/console will capture them)
         detached: true, // Detached process like start_new_session=True
       });
