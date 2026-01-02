@@ -5,8 +5,7 @@ A production-ready Python system that automatically discovers trending hip hop, 
 ## Features
 
 - 🔍 **Automated YouTube Scanning**: Queries YouTube Data API for new videos matching configured entities and keywords
-- 📊 **Intelligent Scoring**: Calculates "clip potential" scores based on recency, engagement, view velocity, entity priority, and Google Trends validation
-- 📈 **Google Trends Integration**: Validates trending topics using Google Trends (pytrends library, no API key required)
+- 📊 **Intelligent Scoring**: Calculates "clip potential" scores based on recency, engagement, view velocity, and entity priority
 - 💾 **Data Storage**: Saves results to PostgreSQL (NeonDB) database with optional CSV export
 - 🔔 **Discord Notifications**: Sends daily summaries of top clip targets via webhook
 - ⚙️ **Config-Driven**: Fully configurable via YAML files (entities, scoring weights, limits)
@@ -89,10 +88,6 @@ Edit `.env` and add your credentials:
 YOUTUBE_API_KEY=your_youtube_api_key_here
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/your_webhook_id/your_webhook_token
 DATABASE_URL=postgresql://user:password@ep-xxx.region.aws.neon.tech/dbname?sslmode=require
-
-# Optional: Google Trends API Key (if you have alpha access)
-# If not provided, the system will use pytrends library (no API key needed)
-# GOOGLE_TRENDS_API_KEY=your_google_trends_api_key_here
 ```
 
 ### 6. Customize Configuration (Optional)

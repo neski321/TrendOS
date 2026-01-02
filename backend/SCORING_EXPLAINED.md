@@ -15,9 +15,7 @@ The scoring algorithm calculates a "Clip Potential" score (0-100) for each video
    ↓
 4. Get cross-platform signals (TikTok, etc.) - currently stub
    ↓
-5. Get Google Trends signals (trending validation)
-   ↓
-6. **SCORE CANDIDATES** ← Scoring happens here
+5. **SCORE CANDIDATES** ← Scoring happens here
    ↓
 7. Sort by score (descending)
    ↓
@@ -39,7 +37,6 @@ Located in: `backend/core/scorer.py:14-81`
 - `entity_priority_map`: Map of entity names to priority multipliers
 - `time_window_hours`: Time window for recency calculation (e.g., 72 hours)
 - `cross_platform_signal`: Cross-platform trending signal (0-1) - currently 0.0
-- `google_trends_signal`: Google Trends validation signal (0-1)
 
 ### Score Components
 
@@ -104,8 +101,7 @@ velocity = min(1.0, log10(views_per_hour + 1) / 5.0)
 #### 4. **Cross-Platform Signal** (Weight: `cross_platform_weight`, default: 0.1 = 10%)
 
 ```python
-trend_signal = (cross_platform_signal + google_trends_signal) / 2.0
-# Or use whichever is available
+trend_signal = cross_platform_signal if cross_platform_signal > 0 else 0.0
 ```
 
 - Currently: **Always 0.0** (stub for future TikTok integration)
@@ -182,8 +178,7 @@ scored = score_candidates(
     filtered,                    # Filtered candidates
     entities_config,             # Entity config (for priority weights)
     settings_config,             # Settings (for scoring weights)
-    cross_platform_signals,      # TikTok signals (currently empty)
-    google_trends_signals        # Google Trends signals
+    cross_platform_signals       # TikTok signals (currently empty)
 )
 ```
 

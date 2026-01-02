@@ -24,7 +24,6 @@ from utils.config_loader import load_all_configs
 from utils.time_utils import hours_ago
 from clients.youtube_client import YouTubeClient
 from clients.tiktok_client import TikTokClient
-from clients.google_trends_client import GoogleTrendsClient
 from core.scorer import filter_candidates, score_candidates, rank_by_category
 from core.storage import Storage
 from core.quota_tracker import QuotaTracker
@@ -72,7 +71,6 @@ def main():
     
     # Get Discord webhook URL from database settings first, then fall back to env var
     database_url = os.getenv("DATABASE_URL")
-    google_trends_api_key = os.getenv("GOOGLE_TRENDS_API_KEY")  # Optional
     
     if not database_url:
         logger.error("DATABASE_URL environment variable is required")
@@ -122,12 +120,6 @@ def main():
         quota_tracker=quota_tracker
     )
     tiktok_client = TikTokClient()  # Stub for now
-    google_trends_client = GoogleTrendsClient(
-        rate_limit_delay=settings_config.api.youtube.rate_limit_delay_seconds,
-        geo=entities_config.default_region,
-        api_key=google_trends_api_key  # Optional - uses pytrends if not provided
-    )
-    logger.info("Google Trends client initialized")
     
     # Initialize storage (use DATABASE_URL from environment, override config)
     storage = Storage(database_url)
@@ -273,29 +265,13 @@ def main():
         cross_platform_signals = {}
         # Future: tiktok_client.get_cross_platform_signal() for each candidate
         
-        # Get Google Trends signals for validation
-        logger.info("Validating candidates with Google Trends...")
-        google_trends_signals = {}
-        for candidate in filtered[:50]:  # Limit to first 50 to avoid rate limits
-            try:
-                # Check if entity or category keyword is trending
-                trend_keyword = candidate.entity_matched or candidate.category
-                trend_score = google_trends_client.get_trending_score(trend_keyword)
-                google_trends_signals[candidate.video_id] = trend_score
-                if trend_score > 0.3:  # Log if significantly trending
-                    logger.debug(f"  {candidate.title[:50]}... - Trends score: {trend_score:.2f}")
-            except Exception as e:
-                logger.warning(f"  Error checking Google Trends for {candidate.video_id}: {e}")
-                google_trends_signals[candidate.video_id] = 0.0
-        
         # Score candidates
         logger.info(f"Scoring {len(filtered)} filtered candidates...")
         scored = score_candidates(
             filtered,
             entities_config,
             settings_config,
-            cross_platform_signals,
-            google_trends_signals
+            cross_platform_signals
         )
         logger.info(f"Scored {len(scored)} candidates")
         

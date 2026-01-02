@@ -41,7 +41,6 @@ In Railway dashboard, set these for **both services**:
 
 **Optional:**
 - `DISCORD_WEBHOOK_URL` - Discord webhook for notifications
-- `GOOGLE_TRENDS_API_KEY` - Google Trends API key (optional)
 - `PORT` - Port for web service (Railway auto-assigns if not set)
 
 ### 4. Deploy
