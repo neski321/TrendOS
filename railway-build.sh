@@ -16,17 +16,12 @@ export PYTHONDONTWRITEBYTECODE=1
 echo "🐍 Checking Python version..."
 python3 --version || python --version
 
-# Bootstrap pip if not available
-echo ""
-echo "📦 Setting up pip..."
-python3 -m ensurepip --upgrade 2>/dev/null || echo "pip already available"
-
-# Install Python dependencies (Nixpacks uses externally-managed Python)
+# Install Python dependencies (exactly like E-Commerce app)
 echo ""
 echo "📦 Installing Python dependencies..."
 cd backend
-python3 -m pip install --upgrade pip --break-system-packages
-python3 -m pip install -r requirements.txt --break-system-packages
+pip install --upgrade pip
+pip install -r requirements.txt
 cd ..
 
 echo ""
