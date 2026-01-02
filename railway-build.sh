@@ -16,6 +16,11 @@ export PYTHONDONTWRITEBYTECODE=1
 echo "🐍 Checking Python version..."
 python3 --version || python --version
 
+# Bootstrap pip if not available
+echo ""
+echo "📦 Setting up pip..."
+python3 -m ensurepip --upgrade 2>/dev/null || echo "pip already available"
+
 # Install Python dependencies (Nixpacks uses externally-managed Python)
 echo ""
 echo "📦 Installing Python dependencies..."
