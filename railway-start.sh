@@ -22,15 +22,39 @@ echo ""
 echo "🐍 Python version:"
 # Railpack: Python might not be in PATH at runtime, search for it
 PYTHON_EXEC=""
-if command -v python3 &> /dev/null; then
-  PYTHON_EXEC=$(command -v python3)
-elif command -v python &> /dev/null; then
-  PYTHON_EXEC=$(command -v python)
-else
-  # Search common locations where Railpack might install Python
-  for py in /usr/bin/python3 /usr/local/bin/python3 /opt/python/bin/python3; do
+
+# Try to use the Python path from build time
+if [ -f ".python_runtime_path" ]; then
+  BUILD_PYTHON=$(cat .python_runtime_path)
+  if [ -x "$BUILD_PYTHON" ]; then
+    PYTHON_EXEC="$BUILD_PYTHON"
+    echo "Using Python from build: $PYTHON_EXEC"
+  fi
+fi
+
+# Try /app/.local/bin where we might have copied it
+if [ -z "$PYTHON_EXEC" ] && [ -x "/app/.local/bin/python3" ]; then
+  PYTHON_EXEC="/app/.local/bin/python3"
+  echo "Using Python from /app/.local/bin: $PYTHON_EXEC"
+fi
+
+# Try PATH
+if [ -z "$PYTHON_EXEC" ]; then
+  if command -v python3 &> /dev/null; then
+    PYTHON_EXEC=$(command -v python3)
+    echo "Using Python from PATH: $PYTHON_EXEC"
+  elif command -v python &> /dev/null; then
+    PYTHON_EXEC=$(command -v python)
+    echo "Using Python from PATH: $PYTHON_EXEC"
+  fi
+fi
+
+# Search common locations
+if [ -z "$PYTHON_EXEC" ]; then
+  for py in /usr/bin/python3 /usr/local/bin/python3 /opt/python/bin/python3 /usr/bin/python; do
     if [ -x "$py" ]; then
       PYTHON_EXEC="$py"
+      echo "Found Python at: $PYTHON_EXEC"
       break
     fi
   done
@@ -38,12 +62,20 @@ fi
 
 if [ -z "$PYTHON_EXEC" ]; then
   echo "❌ ERROR: Python not found in PATH or common locations"
-  echo "Available in /usr/bin/:"
-  ls -la /usr/bin/python* 2>/dev/null || echo "No python found"
+  echo "Searched locations:"
+  echo "  - .python_runtime_path file"
+  echo "  - /app/.local/bin/python3"
+  echo "  - PATH (python3/python)"
+  echo "  - /usr/bin, /usr/local/bin, /opt/python"
+  echo ""
+  echo "Available executables in /usr/bin:"
+  ls -la /usr/bin/python* 2>/dev/null || echo "  No python found"
+  echo ""
+  echo "Available executables in /app/.local/bin:"
+  ls -la /app/.local/bin/ 2>/dev/null || echo "  Directory not found"
   exit 1
 fi
 
-echo "Found Python: $PYTHON_EXEC"
 $PYTHON_EXEC --version
 
 # Check if Node.js server build exists
