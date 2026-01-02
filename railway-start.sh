@@ -20,7 +20,31 @@ echo ""
 
 # Verify Python is available
 echo "🐍 Python version:"
-python3 --version || python --version
+# Railpack: Python might not be in PATH at runtime, search for it
+PYTHON_EXEC=""
+if command -v python3 &> /dev/null; then
+  PYTHON_EXEC=$(command -v python3)
+elif command -v python &> /dev/null; then
+  PYTHON_EXEC=$(command -v python)
+else
+  # Search common locations where Railpack might install Python
+  for py in /usr/bin/python3 /usr/local/bin/python3 /opt/python/bin/python3; do
+    if [ -x "$py" ]; then
+      PYTHON_EXEC="$py"
+      break
+    fi
+  done
+fi
+
+if [ -z "$PYTHON_EXEC" ]; then
+  echo "❌ ERROR: Python not found in PATH or common locations"
+  echo "Available in /usr/bin/:"
+  ls -la /usr/bin/python* 2>/dev/null || echo "No python found"
+  exit 1
+fi
+
+echo "Found Python: $PYTHON_EXEC"
+$PYTHON_EXEC --version
 
 # Check if Node.js server build exists
 if [ ! -f "dist/index.cjs" ]; then
@@ -35,13 +59,12 @@ if [ ! -f "backend/service.py" ]; then
 fi
 
 # Export Python path for Node.js to use (for manual scan trigger)
-PYTHON_EXEC=$(which python3 || which python)
 export PYTHON_EXECUTABLE="$PYTHON_EXEC"
 echo "✓ Exported PYTHON_EXECUTABLE=$PYTHON_EXECUTABLE"
 
 echo ""
 echo "🔧 Starting Python worker (backend/service.py)..."
-python3 backend/service.py &
+$PYTHON_EXEC backend/service.py &
 PYTHON_PID=$!
 echo "✓ Python worker started (PID: $PYTHON_PID)"
 
