@@ -12,6 +12,10 @@ echo ""
 export PYTHONUNBUFFERED=1
 export PYTHONDONTWRITEBYTECODE=1
 
+# Set library path for numpy/pandas C extensions
+export LD_LIBRARY_PATH="/nix/store/*-gcc-*/lib:/nix/store/*-glibc-*/lib:$LD_LIBRARY_PATH"
+echo "✓ Library path configured for C++ dependencies"
+
 # Use the PORT environment variable that Railway provides
 PORT=${PORT:-3000}
 echo "📡 Server will run on port: $PORT"
