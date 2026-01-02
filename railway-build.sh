@@ -16,20 +16,12 @@ export PYTHONDONTWRITEBYTECODE=1
 echo "🐍 Checking Python version..."
 python3 --version || python --version
 
-# Ensure pip is available (Railpack doesn't include it by default)
-echo ""
-echo "📦 Setting up pip..."
-if ! command -v pip &> /dev/null; then
-    echo "pip not found, bootstrapping..."
-    curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages
-fi
-
-# Install Python dependencies (Railpack uses externally-managed Python)
+# Install Python dependencies
 echo ""
 echo "📦 Installing Python dependencies..."
 cd backend
-pip install --upgrade pip --break-system-packages
-pip install -r requirements.txt --break-system-packages
+pip install --upgrade pip
+pip install -r requirements.txt
 cd ..
 
 echo ""
