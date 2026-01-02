@@ -21,15 +21,15 @@ echo ""
 echo "📦 Setting up pip..."
 if ! command -v pip &> /dev/null; then
     echo "pip not found, bootstrapping..."
-    curl -sS https://bootstrap.pypa.io/get-pip.py | python3
+    curl -sS https://bootstrap.pypa.io/get-pip.py | python3 - --break-system-packages
 fi
 
-# Install Python dependencies
+# Install Python dependencies (Railpack uses externally-managed Python)
 echo ""
 echo "📦 Installing Python dependencies..."
 cd backend
-pip install --upgrade pip
-pip install -r requirements.txt
+pip install --upgrade pip --break-system-packages
+pip install -r requirements.txt --break-system-packages
 cd ..
 
 echo ""
