@@ -20,37 +20,17 @@ echo ""
 
 # Verify Python is available
 echo "🐍 Python version:"
-# Railpack: Python might not be in PATH at runtime, search for it
+# With Metal OFF, Python should persist from build
 PYTHON_EXEC=""
 
-# Try to use the Python path from build time
-if [ -f ".python_runtime_path" ]; then
-  BUILD_PYTHON=$(cat .python_runtime_path)
-  if [ -x "$BUILD_PYTHON" ]; then
-    PYTHON_EXEC="$BUILD_PYTHON"
-    echo "Using Python from build: $PYTHON_EXEC"
-  fi
-fi
-
-# Try /app/.local/bin where we might have copied it
-if [ -z "$PYTHON_EXEC" ] && [ -x "/app/.local/bin/python3" ]; then
-  PYTHON_EXEC="/app/.local/bin/python3"
-  echo "Using Python from /app/.local/bin: $PYTHON_EXEC"
-fi
-
-# Try PATH
-if [ -z "$PYTHON_EXEC" ]; then
-  if command -v python3 &> /dev/null; then
-    PYTHON_EXEC=$(command -v python3)
-    echo "Using Python from PATH: $PYTHON_EXEC"
-  elif command -v python &> /dev/null; then
-    PYTHON_EXEC=$(command -v python)
-    echo "Using Python from PATH: $PYTHON_EXEC"
-  fi
-fi
-
-# Search common locations
-if [ -z "$PYTHON_EXEC" ]; then
+if command -v python3 &> /dev/null; then
+  PYTHON_EXEC=$(command -v python3)
+  echo "Using Python from PATH: $PYTHON_EXEC"
+elif command -v python &> /dev/null; then
+  PYTHON_EXEC=$(command -v python)
+  echo "Using Python from PATH: $PYTHON_EXEC"
+else
+  # Search common locations
   for py in /usr/bin/python3 /usr/local/bin/python3 /opt/python/bin/python3 /usr/bin/python; do
     if [ -x "$py" ]; then
       PYTHON_EXEC="$py"
@@ -61,18 +41,12 @@ if [ -z "$PYTHON_EXEC" ]; then
 fi
 
 if [ -z "$PYTHON_EXEC" ]; then
-  echo "❌ ERROR: Python not found in PATH or common locations"
-  echo "Searched locations:"
-  echo "  - .python_runtime_path file"
-  echo "  - /app/.local/bin/python3"
-  echo "  - PATH (python3/python)"
-  echo "  - /usr/bin, /usr/local/bin, /opt/python"
-  echo ""
-  echo "Available executables in /usr/bin:"
+  echo "❌ ERROR: Python not found"
+  echo "Available in /usr/bin:"
   ls -la /usr/bin/python* 2>/dev/null || echo "  No python found"
   echo ""
-  echo "Available executables in /app/.local/bin:"
-  ls -la /app/.local/bin/ 2>/dev/null || echo "  Directory not found"
+  echo "PATH contents:"
+  echo "$PATH"
   exit 1
 fi
 
