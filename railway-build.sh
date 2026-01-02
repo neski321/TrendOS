@@ -18,11 +18,12 @@ python3 --version || python --version
 
 # Install Python dependencies (exactly like E-Commerce app)
 # Note: Python 3.11+ requires --break-system-packages flag for Nix environments
+# Use python3 -m pip after upgrading to avoid PATH issues
 echo ""
 echo "📦 Installing Python dependencies..."
 cd backend
 pip install --upgrade pip --break-system-packages
-pip install -r requirements.txt --break-system-packages
+python3 -m pip install -r requirements.txt --break-system-packages
 cd ..
 
 echo ""
