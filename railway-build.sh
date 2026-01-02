@@ -12,7 +12,13 @@ echo ""
 export PYTHONUNBUFFERED=1
 export PYTHONDONTWRITEBYTECODE=1
 
+# Build Node.js application first
+echo "🌐 Building Node.js application..."
+npm run build
+echo "✓ Node.js build complete"
+
 # Verify Python is available
+echo ""
 echo "🐍 Checking Python version..."
 python3 --version || python --version
 
