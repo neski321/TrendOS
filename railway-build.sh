@@ -16,7 +16,15 @@ export PYTHONDONTWRITEBYTECODE=1
 echo "🐍 Checking Python version..."
 python3 --version || python --version
 
-# Install Python dependencies (using pip command directly like E-Commerce app)
+# Ensure pip is available (Railpack doesn't include it by default)
+echo ""
+echo "📦 Setting up pip..."
+if ! command -v pip &> /dev/null; then
+    echo "pip not found, bootstrapping..."
+    curl -sS https://bootstrap.pypa.io/get-pip.py | python3
+fi
+
+# Install Python dependencies
 echo ""
 echo "📦 Installing Python dependencies..."
 cd backend
