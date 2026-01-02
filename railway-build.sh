@@ -17,11 +17,12 @@ echo "🐍 Checking Python version..."
 python3 --version || python --version
 
 # Install Python dependencies (exactly like E-Commerce app)
+# Note: Python 3.11+ requires --break-system-packages flag for Nix environments
 echo ""
 echo "📦 Installing Python dependencies..."
 cd backend
-pip install --upgrade pip
-pip install -r requirements.txt
+pip install --upgrade pip --break-system-packages
+pip install -r requirements.txt --break-system-packages
 cd ..
 
 echo ""
