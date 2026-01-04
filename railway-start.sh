@@ -12,6 +12,10 @@ echo ""
 export PYTHONUNBUFFERED=1
 export PYTHONDONTWRITEBYTECODE=1
 
+# Set library path for numpy/pandas C extensions
+export LD_LIBRARY_PATH="/nix/store/*-gcc-*/lib:/nix/store/*-glibc-*/lib:$LD_LIBRARY_PATH"
+echo "✓ Library path configured for C++ dependencies"
+
 # Use the PORT environment variable that Railway provides
 PORT=${PORT:-3000}
 echo "📡 Server will run on port: $PORT"
@@ -20,7 +24,37 @@ echo ""
 
 # Verify Python is available
 echo "🐍 Python version:"
-python3 --version || python --version
+# With Metal OFF, Python should persist from build
+PYTHON_EXEC=""
+
+if command -v python3 &> /dev/null; then
+  PYTHON_EXEC=$(command -v python3)
+  echo "Using Python from PATH: $PYTHON_EXEC"
+elif command -v python &> /dev/null; then
+  PYTHON_EXEC=$(command -v python)
+  echo "Using Python from PATH: $PYTHON_EXEC"
+else
+  # Search common locations
+  for py in /usr/bin/python3 /usr/local/bin/python3 /opt/python/bin/python3 /usr/bin/python; do
+    if [ -x "$py" ]; then
+      PYTHON_EXEC="$py"
+      echo "Found Python at: $PYTHON_EXEC"
+      break
+    fi
+  done
+fi
+
+if [ -z "$PYTHON_EXEC" ]; then
+  echo "❌ ERROR: Python not found"
+  echo "Available in /usr/bin:"
+  ls -la /usr/bin/python* 2>/dev/null || echo "  No python found"
+  echo ""
+  echo "PATH contents:"
+  echo "$PATH"
+  exit 1
+fi
+
+$PYTHON_EXEC --version
 
 # Check if Node.js server build exists
 if [ ! -f "dist/index.cjs" ]; then
@@ -35,13 +69,12 @@ if [ ! -f "backend/service.py" ]; then
 fi
 
 # Export Python path for Node.js to use (for manual scan trigger)
-PYTHON_EXEC=$(which python3 || which python)
 export PYTHON_EXECUTABLE="$PYTHON_EXEC"
 echo "✓ Exported PYTHON_EXECUTABLE=$PYTHON_EXECUTABLE"
 
 echo ""
 echo "🔧 Starting Python worker (backend/service.py)..."
-python3 backend/service.py &
+$PYTHON_EXEC backend/service.py &
 PYTHON_PID=$!
 echo "✓ Python worker started (PID: $PYTHON_PID)"
 

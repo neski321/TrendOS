@@ -1,18 +1,21 @@
 import { useState } from "react";
 import Layout from "@/components/layout";
-import { Card } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Search, Download, Pause, Play, Trash2, Loader2 } from "lucide-react";
+import { Search, Download, Pause, Play, Trash2, Loader2, Clock, CheckCircle2, XCircle, AlertCircle, StopCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useLogs } from "@/lib/api";
+import { useLogs, useScanHistory, useScanStatus, useTerminateScan } from "@/lib/api";
 
 export default function Logs() {
   const [isPaused, setIsPaused] = useState(false);
   const [filter, setFilter] = useState("");
   const { data: logs = [], isLoading } = useLogs();
+  const { data: scanHistory = [], isLoading: historyLoading } = useScanHistory(10);
+  const { data: scanStatus } = useScanStatus();
+  const terminateScan = useTerminateScan();
   
   // Filter logs based on search
   const filteredLogs = logs.filter(log => 
@@ -64,6 +67,130 @@ export default function Logs() {
              <Badge variant="outline" className="cursor-pointer hover:bg-muted text-yellow-500 border-yellow-500/20 bg-yellow-500/5">WARN</Badge>
              <Badge variant="outline" className="cursor-pointer hover:bg-muted text-destructive border-destructive/20 bg-destructive/5">ERROR</Badge>
           </div>
+        </div>
+
+        {/* Scan History Section */}
+        <div>
+          <h2 className="text-xl font-heading font-semibold mb-4">📊 Scan History</h2>
+          {historyLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            </div>
+          ) : scanHistory.length > 0 ? (
+            <Card className="border-border">
+              <CardContent className="p-0">
+                <div className="divide-y divide-border">
+                  {scanHistory.map((scan) => {
+                    const startDate = scan.started_at ? new Date(scan.started_at) : null;
+                    const endDate = scan.completed_at ? new Date(scan.completed_at) : null;
+                    const duration = startDate && endDate 
+                      ? Math.round((endDate.getTime() - startDate.getTime()) / 1000 / 60)
+                      : null;
+                    
+                    const statusIcon = scan.status === 'completed' ? (
+                      <CheckCircle2 className="w-4 h-4 text-green-500" />
+                    ) : scan.status === 'failed' ? (
+                      <XCircle className="w-4 h-4 text-red-500" />
+                    ) : scan.status === 'running' ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-yellow-500" />
+                    );
+
+                    const statusColor = scan.status === 'completed' 
+                      ? 'text-green-500' 
+                      : scan.status === 'failed' 
+                      ? 'text-red-500' 
+                      : scan.status === 'running'
+                      ? 'text-primary'
+                      : 'text-yellow-500';
+
+                    const isRunning = scan.status === 'running';
+                    const canTerminate = isRunning && scanStatus?.isRunning && scanStatus.scan?.scan_id === scan.scan_id;
+
+                    return (
+                      <div key={scan.scan_id} className="p-4 hover:bg-muted/50 transition-colors">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="flex items-start gap-3 flex-1">
+                            {statusIcon}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-1">
+                                <span className={`font-semibold capitalize ${statusColor}`}>
+                                  {scan.status}
+                                </span>
+                                <span className="text-xs text-muted-foreground font-mono">
+                                  {scan.scan_id}
+                                </span>
+                              </div>
+                              {scan.progress_message && (
+                                <p className="text-sm text-muted-foreground mb-2">
+                                  {scan.progress_message}
+                                </p>
+                              )}
+                              {scan.error_message && (
+                                <p className="text-sm text-red-400 mb-2">
+                                  {scan.error_message}
+                                </p>
+                              )}
+                              <div className="flex items-center gap-4 text-xs text-muted-foreground flex-wrap">
+                                {startDate && (
+                                  <div className="flex items-center gap-1">
+                                    <Clock className="w-3 h-3" />
+                                    <span>Started: {startDate.toLocaleString()}</span>
+                                  </div>
+                                )}
+                                {endDate && (
+                                  <div className="flex items-center gap-1">
+                                    <span>Completed: {endDate.toLocaleString()}</span>
+                                  </div>
+                                )}
+                                {duration !== null && (
+                                  <span>Duration: {duration} min</span>
+                                )}
+                                {scan.candidates_found > 0 && (
+                                  <span>Found: {scan.candidates_found}</span>
+                                )}
+                                {scan.candidates_saved > 0 && (
+                                  <span>Saved: {scan.candidates_saved}</span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                          {canTerminate && (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={() => terminateScan.mutate(scan.scan_id)}
+                              disabled={terminateScan.isPending}
+                              className="gap-2"
+                            >
+                              {terminateScan.isPending ? (
+                                <>
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  Terminating...
+                                </>
+                              ) : (
+                                <>
+                                  <StopCircle className="w-3 h-3" />
+                                  Terminate
+                                </>
+                              )}
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="border-border">
+              <CardContent className="p-12 text-center text-muted-foreground">
+                No scan history available. Run your first scan to get started!
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Terminal Window */}

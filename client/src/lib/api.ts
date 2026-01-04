@@ -374,11 +374,19 @@ export function useTriggerScan() {
         });
         
         if (!res.ok) {
-          const errorText = await res.text().catch(() => res.statusText);
+          const errorData = await res.json().catch(() => ({ error: res.statusText }));
+          // Handle daily limit error (429) and conflict (409) with better messages
+          if (res.status === 429 && errorData.details?.message) {
+            throw new Error(errorData.details.message);
+          }
+          if (res.status === 409 && errorData.details?.message) {
+            throw new Error(errorData.details.message);
+          }
+          const errorText = errorData.error || res.statusText;
           if (errorText.trim().startsWith("<!DOCTYPE") || errorText.trim().startsWith("<html")) {
             throw new Error("Backend server is not available. Cannot trigger scan.");
           }
-          throw new Error(`Failed to trigger scan: ${res.status} ${errorText}`);
+          throw new Error(errorData.details?.message || `Failed to trigger scan: ${res.status} ${errorText}`);
         }
         
         return res.json();
@@ -469,10 +477,13 @@ export function useScanStatus() {
       return res.json();
     },
     refetchInterval: (query) => {
-      // Poll every 2 seconds if scan is running, otherwise every 30 seconds
+      // Poll every 5 seconds if scan is running, otherwise every 60 seconds (or disable)
       const data = query.state.data as ScanStatusResponse | undefined;
-      return data?.isRunning ? 2000 : 30000;
+      return data?.isRunning ? 5000 : 60000; // 5s when running, 60s when not
     },
+    // Only refetch when window is focused
+    refetchOnWindowFocus: true,
+    refetchOnMount: true,
   });
 }
 
@@ -488,6 +499,47 @@ export function useScanHistory(limit: number = 10) {
       return res.json();
     },
     refetchInterval: 30000, // Refresh every 30 seconds
+  });
+}
+
+// Terminate a running scan
+export function useTerminateScan() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (scanId: string) => {
+      const res = await fetch("/api/scan/terminate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scanId }),
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(errorData.error || `Failed to terminate scan: ${res.statusText}`);
+      }
+      
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Scan Terminated",
+        description: "The scan has been terminated successfully.",
+        duration: 3000,
+      });
+      // Invalidate queries to refetch data
+      queryClient.invalidateQueries({ queryKey: ["/api/scan/status"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/scan/history"] });
+    },
+    onError: (error: unknown) => {
+      const message = getErrorMessage(error, "Failed to terminate scan");
+      toast({
+        title: "Termination Failed",
+        description: message,
+        variant: "destructive",
+        duration: 5000,
+      });
+    },
   });
 }
 

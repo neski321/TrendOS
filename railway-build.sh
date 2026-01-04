@@ -12,23 +12,24 @@ echo ""
 export PYTHONUNBUFFERED=1
 export PYTHONDONTWRITEBYTECODE=1
 
+# Build Node.js application first
+echo "🌐 Building Node.js application..."
+npm run build
+echo "✓ Node.js build complete"
+
 # Verify Python is available
+echo ""
 echo "🐍 Checking Python version..."
 python3 --version || python --version
 
-# Install/upgrade pip (Railway's Python might not have pip installed)
-echo ""
-echo "📦 Setting up pip..."
-# First ensure pip is installed using ensurepip
-python3 -m ensurepip --upgrade 2>/dev/null || echo "ensurepip not needed, pip already available"
-# Then upgrade pip
-python3 -m pip install --upgrade pip --quiet || pip install --upgrade pip --quiet
-
-# Install Python dependencies
+# Install Python dependencies (exactly like E-Commerce app)
+# Note: Python 3.11+ requires --break-system-packages flag for Nix environments
+# Use python3 -m pip after upgrading to avoid PATH issues
 echo ""
 echo "📦 Installing Python dependencies..."
 cd backend
-python3 -m pip install -r requirements.txt --quiet || pip install -r requirements.txt --quiet
+pip install --upgrade pip --break-system-packages
+python3 -m pip install -r requirements.txt --break-system-packages
 cd ..
 
 echo ""

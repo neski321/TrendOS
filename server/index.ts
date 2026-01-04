@@ -47,6 +47,18 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
+      // Skip logging for frequent polling endpoints (health checks, status checks)
+      const pathWithoutQuery = path.split('?')[0];
+      const isPollingEndpoint = pathWithoutQuery === "/api/scan/status" || 
+                                 pathWithoutQuery === "/api/health" ||
+                                 pathWithoutQuery === "/api/scanner-stats";
+      
+      // Only log polling endpoints if they take too long or return errors
+      if (isPollingEndpoint && res.statusCode === 200 && duration < 500) {
+        // Skip logging for fast, successful polling requests
+        return;
+      }
+      
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       
       if (capturedJsonResponse) {
@@ -54,12 +66,22 @@ app.use((req, res, next) => {
         const jsonString = JSON.stringify(capturedJsonResponse);
         const jsonSize = jsonString.length;
         
-        // Special handling for candidate detail endpoint (single candidate object with potentially long description)
-        const isCandidateDetail = path.startsWith("/api/candidates/") && path !== "/api/candidates" && !Array.isArray(capturedJsonResponse);
+        // Get path without query parameters for matching
+        const pathWithoutQuery = path.split('?')[0];
         
-        // If response is large (> 500 chars) or is an array with many items, summarize it
-        if (Array.isArray(capturedJsonResponse)) {
-          if (capturedJsonResponse.length > 5 || jsonSize > 500) {
+        // Special handling for candidate list endpoint - always summarize (always returns large arrays)
+        const isCandidateList = pathWithoutQuery === "/api/candidates";
+        
+        // Special handling for candidate detail endpoint (single candidate object with potentially long description)
+        const isCandidateDetail = pathWithoutQuery.startsWith("/api/candidates/") && pathWithoutQuery !== "/api/candidates" && !Array.isArray(capturedJsonResponse);
+        
+        // Always summarize candidate lists (they're always large)
+        if (isCandidateList && Array.isArray(capturedJsonResponse)) {
+          logLine += ` :: [${capturedJsonResponse.length} candidates, ${jsonSize} bytes]`;
+        }
+        // If response is large (> 200 chars) or is an array with many items, summarize it
+        else if (Array.isArray(capturedJsonResponse)) {
+          if (capturedJsonResponse.length > 3 || jsonSize > 200) {
             logLine += ` :: [Array with ${capturedJsonResponse.length} items, ${jsonSize} bytes]`;
           } else {
             logLine += ` :: ${jsonString}`;
@@ -70,7 +92,7 @@ app.use((req, res, next) => {
           const hasDescription = 'description' in capturedJsonResponse && capturedJsonResponse.description;
           const descLength = hasDescription ? String(capturedJsonResponse.description).length : 0;
           logLine += ` :: {Candidate: ${capturedJsonResponse.title?.substring(0, 40) || 'N/A'}..., ${keys.length} fields, ${jsonSize} bytes${descLength > 0 ? `, description: ${descLength} chars` : ''}}`;
-        } else if (jsonSize > 500) {
+        } else if (jsonSize > 200) {
           // For large objects, summarize (entities, settings, etc. are usually large nested objects)
           const keys = Object.keys(capturedJsonResponse);
           // Check if it's a complex nested object (has nested objects/arrays)

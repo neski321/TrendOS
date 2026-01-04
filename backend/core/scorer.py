@@ -16,8 +16,7 @@ def calculate_score(
     weights: Dict[str, float],
     entity_priority_map: Dict[str, float],
     time_window_hours: int,
-    cross_platform_signal: float = 0.0,
-    google_trends_signal: float = 0.0
+    cross_platform_signal: float = 0.0
 ) -> float:
     """
     Calculate clip potential score (0-100) for a video candidate.
@@ -28,7 +27,6 @@ def calculate_score(
         entity_priority_map: Map of entity names to priority multipliers
         time_window_hours: Time window for recency calculation
         cross_platform_signal: Cross-platform trending signal (0-1)
-        google_trends_signal: Google Trends validation signal (0-1)
         
     Returns:
         Score between 0 and 100
@@ -56,15 +54,8 @@ def calculate_score(
     # Normalize priority to 0-1 range (assuming max priority is ~2.0)
     priority_normalized = min(1.0, priority / 2.0)
     
-    # Combine cross-platform and Google Trends signals
-    # If both are available, average them; otherwise use whichever is available
-    trend_signal = 0.0
-    if cross_platform_signal > 0 and google_trends_signal > 0:
-        trend_signal = (cross_platform_signal + google_trends_signal) / 2.0
-    elif cross_platform_signal > 0:
-        trend_signal = cross_platform_signal
-    elif google_trends_signal > 0:
-        trend_signal = google_trends_signal
+    # Use cross-platform signal if available
+    trend_signal = cross_platform_signal if cross_platform_signal > 0 else 0.0
     
     # Calculate weighted score
     score = (
@@ -174,8 +165,7 @@ def score_candidates(
     candidates: List[VideoCandidate],
     entities_config: EntitiesConfig,
     settings_config: SettingsConfig,
-    cross_platform_signals: Dict[str, float] = None,
-    google_trends_signals: Dict[str, float] = None
+    cross_platform_signals: Dict[str, float] = None
 ) -> List[VideoCandidate]:
     """
     Score all candidates.
@@ -185,15 +175,12 @@ def score_candidates(
         entities_config: Entities configuration
         settings_config: Settings configuration
         cross_platform_signals: Optional dict mapping video_id to cross-platform signal
-        google_trends_signals: Optional dict mapping video_id to Google Trends signal
         
     Returns:
         List of candidates with scores (as a new attribute, but we'll use a tuple for now)
     """
     if cross_platform_signals is None:
         cross_platform_signals = {}
-    if google_trends_signals is None:
-        google_trends_signals = {}
     
     # Build entity priority map from all categories
     entity_priority_map = {}
@@ -212,14 +199,12 @@ def score_candidates(
     scored_candidates = []
     for candidate in candidates:
         cross_signal = cross_platform_signals.get(candidate.video_id, 0.0)
-        trends_signal = google_trends_signals.get(candidate.video_id, 0.0)
         score = calculate_score(
             candidate,
             weights,
             entity_priority_map,
             entities_config.time_window_hours,
-            cross_signal,
-            trends_signal
+            cross_signal
         )
         
         # Add score as attribute (we'll create a scored version)
