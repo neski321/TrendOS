@@ -37,27 +37,112 @@ class QuotaTracker:
         return psycopg2.connect(self.database_url)
     
     def _ensure_quota_table(self):
-        """Ensure quota_tracking table exists."""
+        """Ensure quota_tracking table exists with correct schema."""
         conn = self._get_connection()
         cursor = conn.cursor()
         try:
-            # Create table with api_key column for multi-key support
+            # Check if table exists
             cursor.execute("""
-                CREATE TABLE IF NOT EXISTS quota_tracking (
-                    id SERIAL PRIMARY KEY,
-                    date DATE NOT NULL,
-                    api_key_hash VARCHAR(64) NOT NULL DEFAULT 'default',
-                    quota_used INTEGER NOT NULL DEFAULT 0,
-                    quota_limit INTEGER NOT NULL DEFAULT %s,
-                    last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(date, api_key_hash)
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables 
+                    WHERE table_name = 'quota_tracking'
                 )
-            """, (self.daily_quota,))
+            """)
+            table_exists = cursor.fetchone()[0]
+            
+            if not table_exists:
+                # Create table with api_key_hash column for multi-key support
+                cursor.execute("""
+                    CREATE TABLE quota_tracking (
+                        id SERIAL PRIMARY KEY,
+                        date DATE NOT NULL,
+                        api_key_hash VARCHAR(64) NOT NULL DEFAULT 'default',
+                        quota_used INTEGER NOT NULL DEFAULT 0,
+                        quota_limit INTEGER NOT NULL DEFAULT %s,
+                        last_updated TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(date, api_key_hash)
+                    )
+                """, (self.daily_quota,))
+                logger.info("Created quota_tracking table")
+            else:
+                # Table exists, check if api_key_hash column exists
+                cursor.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM information_schema.columns 
+                        WHERE table_name = 'quota_tracking' AND column_name = 'api_key_hash'
+                    )
+                """)
+                column_exists = cursor.fetchone()[0]
+                
+                if not column_exists:
+                    # Add api_key_hash column to existing table
+                    logger.info("Adding api_key_hash column to existing quota_tracking table")
+                    
+                    # Check for old UNIQUE constraint on just 'date' column
+                    cursor.execute("""
+                        SELECT tc.constraint_name
+                        FROM information_schema.table_constraints tc
+                        JOIN information_schema.key_column_usage kcu 
+                            ON tc.constraint_name = kcu.constraint_name
+                        WHERE tc.table_name = 'quota_tracking' 
+                        AND tc.constraint_type = 'UNIQUE'
+                        GROUP BY tc.constraint_name
+                        HAVING COUNT(kcu.column_name) = 1 
+                        AND MAX(kcu.column_name) = 'date'
+                    """)
+                    old_constraints = cursor.fetchall()
+                    
+                    # Drop old UNIQUE constraint on date if it exists
+                    for (constraint_name,) in old_constraints:
+                        try:
+                            cursor.execute(f"ALTER TABLE quota_tracking DROP CONSTRAINT IF EXISTS {constraint_name}")
+                            logger.info(f"Dropped old UNIQUE constraint on date: {constraint_name}")
+                        except Exception as e:
+                            logger.warning(f"Could not drop constraint {constraint_name}: {e}")
+                    
+                    # Add api_key_hash column with default value
+                    cursor.execute("""
+                        ALTER TABLE quota_tracking 
+                        ADD COLUMN api_key_hash VARCHAR(64) NOT NULL DEFAULT 'default'
+                    """)
+                    
+                    # Ensure all existing rows have 'default' hash
+                    cursor.execute("""
+                        UPDATE quota_tracking 
+                        SET api_key_hash = 'default' 
+                        WHERE api_key_hash IS NULL OR api_key_hash = ''
+                    """)
+                    
+                    # Add UNIQUE constraint on (date, api_key_hash) if it doesn't exist
+                    cursor.execute("""
+                        SELECT EXISTS (
+                            SELECT 1 FROM pg_constraint 
+                            WHERE conrelid = 'quota_tracking'::regclass 
+                            AND conname = 'quota_tracking_date_api_key_hash_key'
+                        )
+                    """)
+                    constraint_exists = cursor.fetchone()[0]
+                    
+                    if not constraint_exists:
+                        try:
+                            cursor.execute("""
+                                ALTER TABLE quota_tracking 
+                                ADD CONSTRAINT quota_tracking_date_api_key_hash_key 
+                                UNIQUE (date, api_key_hash)
+                            """)
+                            logger.info("Added UNIQUE constraint on (date, api_key_hash)")
+                        except Exception as e:
+                            # Constraint might fail if duplicates exist
+                            logger.warning(f"Could not add UNIQUE constraint (duplicates may exist): {e}")
+                            logger.warning("You may need to clean up duplicate rows manually")
+                    
+                    logger.info("Successfully added api_key_hash column to quota_tracking table")
+            
             conn.commit()
-            logger.debug("quota_tracking table verified/created")
+            logger.debug("quota_tracking table verified/updated")
         except Exception as e:
             conn.rollback()
-            logger.error(f"Error creating quota_tracking table: {e}")
+            logger.error(f"Error ensuring quota_tracking table: {e}")
             raise
         finally:
             cursor.close()
