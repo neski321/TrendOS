@@ -139,7 +139,7 @@ class YouTubeClient:
                 if api_key != self._current_api_key:
                     self._refresh_youtube_service(api_key)
                 
-                # Search for videos
+                # Search for videos (English content only)
                 search_response = self.youtube.search().list(
                     q=query,
                     part='id,snippet',
@@ -147,7 +147,9 @@ class YouTubeClient:
                     order='date',
                     publishedAfter=published_after_iso,
                     maxResults=min(50, max_results - len(candidates)),
-                    pageToken=next_page_token
+                    pageToken=next_page_token,
+                    relevanceLanguage='en',  # Filter for English content only
+                    regionCode='US'  # Further prioritize US/English content
                 ).execute()
                 
                 # Record quota usage
@@ -192,6 +194,19 @@ class YouTubeClient:
                         snippet = video_item['snippet']
                         statistics = video_item.get('statistics', {})
                         content_details = video_item.get('contentDetails', {})
+                        
+                        # Filter for English content only (stricter check)
+                        default_language = snippet.get('defaultLanguage', '').lower()
+                        default_audio_language = snippet.get('defaultAudioLanguage', '').lower()
+                        
+                        # Skip if language is explicitly set and not English
+                        if default_language and default_language != 'en':
+                            logger.debug(f"Skipping video {video_id}: defaultLanguage is '{default_language}', not 'en'")
+                            continue
+                        
+                        if default_audio_language and default_audio_language != 'en':
+                            logger.debug(f"Skipping video {video_id}: defaultAudioLanguage is '{default_audio_language}', not 'en'")
+                            continue
                         
                         published_at = parse_iso_datetime(snippet['publishedAt'])
                         duration_seconds = self._parse_duration(content_details.get('duration', 'PT0S'))
@@ -279,7 +294,7 @@ class YouTubeClient:
                 if api_key != self._current_api_key:
                     self._refresh_youtube_service(api_key)
                 
-                # Search for videos
+                # Search for videos (English content only)
                 search_response = self.youtube.search().list(
                     q=query,
                     part='id,snippet',
@@ -287,7 +302,9 @@ class YouTubeClient:
                     order=order,  # Use viewCount to get trending content
                     publishedAfter=published_after_iso,
                     maxResults=min(50, max_results - len(candidates)),
-                    pageToken=next_page_token
+                    pageToken=next_page_token,
+                    relevanceLanguage='en',  # Filter for English content only
+                    regionCode='US'  # Further prioritize US/English content
                 ).execute()
                 
                 # Record quota usage
@@ -332,6 +349,19 @@ class YouTubeClient:
                         snippet = video_item['snippet']
                         statistics = video_item.get('statistics', {})
                         content_details = video_item.get('contentDetails', {})
+                        
+                        # Filter for English content only (stricter check)
+                        default_language = snippet.get('defaultLanguage', '').lower()
+                        default_audio_language = snippet.get('defaultAudioLanguage', '').lower()
+                        
+                        # Skip if language is explicitly set and not English
+                        if default_language and default_language != 'en':
+                            logger.debug(f"Skipping video {video_id}: defaultLanguage is '{default_language}', not 'en'")
+                            continue
+                        
+                        if default_audio_language and default_audio_language != 'en':
+                            logger.debug(f"Skipping video {video_id}: defaultAudioLanguage is '{default_audio_language}', not 'en'")
+                            continue
                         
                         published_at = parse_iso_datetime(snippet['publishedAt'])
                         duration_seconds = self._parse_duration(content_details.get('duration', 'PT0S'))
