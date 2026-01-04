@@ -33,6 +33,58 @@ export async function registerRoutes(
   // Trigger scan endpoint
   app.post("/api/scan/trigger", async (_req, res) => {
     try {
+      // Check if a scan was already run today (completed or failed)
+      const todayCheck = await pool.query(`
+        SELECT 
+          scan_id,
+          status,
+          started_at,
+          completed_at
+        FROM scan_status
+        WHERE DATE(started_at) = CURRENT_DATE
+          AND status IN ('completed', 'failed')
+        ORDER BY started_at DESC
+        LIMIT 1
+      `);
+
+      if (todayCheck.rows.length > 0) {
+        const lastScan = todayCheck.rows[0];
+        const scanTime = new Date(lastScan.started_at).toLocaleString();
+        return res.status(429).json({
+          success: false,
+          error: "Only one scan per day is allowed",
+          details: {
+            lastScanTime: scanTime,
+            lastScanStatus: lastScan.status,
+            lastScanId: lastScan.scan_id,
+            message: `A scan was already run today at ${scanTime}. Please try again tomorrow.`
+          }
+        });
+      }
+
+      // Also check if there's a scan currently running
+      const runningCheck = await pool.query(`
+        SELECT scan_id, started_at
+        FROM scan_status
+        WHERE status = 'running'
+        ORDER BY started_at DESC
+        LIMIT 1
+      `);
+
+      if (runningCheck.rows.length > 0) {
+        const runningScan = runningCheck.rows[0];
+        const scanTime = new Date(runningScan.started_at).toLocaleString();
+        return res.status(409).json({
+          success: false,
+          error: "A scan is already running",
+          details: {
+            runningScanId: runningScan.scan_id,
+            startedAt: scanTime,
+            message: `A scan is currently running (started at ${scanTime}). Please wait for it to complete.`
+          }
+        });
+      }
+
       const { spawn, execSync } = await import("child_process");
       const path = await import("path");
       const fs = await import("fs");
@@ -160,6 +212,23 @@ export async function registerRoutes(
       // Store process info for potential status checking
       const processId = pythonProcess.pid;
       console.log(`[SCAN] Scan process spawned successfully (PID: ${processId})`);
+      
+      // Get the scan_id from the Python process (it will create one)
+      // We'll update it with the process ID after a short delay
+      // For now, find the most recent pending/running scan and update it
+      setTimeout(async () => {
+        try {
+          await pool.query(`
+            UPDATE scan_status
+            SET progress_message = COALESCE(progress_message, '') || ' [PID: ' || $1 || ']'
+            WHERE status = 'running'
+            ORDER BY started_at DESC
+            LIMIT 1
+          `, [processId.toString()]);
+        } catch (err) {
+          console.error(`[SCAN] Error storing process ID: ${err}`);
+        }
+      }, 1000);
       
       // Return success immediately (don't wait for process to complete)
       // Note: We don't capture stdout/stderr or log exit codes to match scheduler._run_scan() behavior
@@ -796,6 +865,17 @@ export async function registerRoutes(
   // Get current scan status
   app.get("/api/scan/status", async (_req, res) => {
     try {
+      // First, check for stale scans (running for more than 2 hours) and mark them as failed
+      await pool.query(`
+        UPDATE scan_status
+        SET status = 'failed',
+            completed_at = CURRENT_TIMESTAMP,
+            error_message = 'Scan timed out - process may have crashed or been interrupted',
+            updated_at = CURRENT_TIMESTAMP
+        WHERE status = 'running'
+          AND started_at < NOW() - INTERVAL '2 hours'
+      `);
+
       const result = await pool.query(`
         SELECT 
           scan_id,
@@ -847,6 +927,131 @@ export async function registerRoutes(
       console.error("Error getting scan status:", error);
       res.status(500).json({
         error: error instanceof Error ? error.message : "Unknown error",
+      });
+    }
+  });
+
+  // Terminate a running scan
+  app.post("/api/scan/terminate", async (req, res) => {
+    try {
+      const { scanId } = req.body;
+      
+      if (!scanId) {
+        return res.status(400).json({
+          success: false,
+          error: "scanId is required"
+        });
+      }
+
+      // Find the running scan
+      const scanResult = await pool.query(`
+        SELECT scan_id, status, progress_message
+        FROM scan_status
+        WHERE scan_id = $1 AND status = 'running'
+        LIMIT 1
+      `, [scanId]);
+
+      if (scanResult.rows.length === 0) {
+        return res.status(404).json({
+          success: false,
+          error: "No running scan found with the provided scanId"
+        });
+      }
+
+      const scan = scanResult.rows[0];
+      
+      // Extract PID from progress_message if available (format: "message [PID: 12345]")
+      let processId: number | null = null;
+      const pidMatch = scan.progress_message?.match(/\[PID: (\d+)\]/);
+      if (pidMatch) {
+        processId = parseInt(pidMatch[1], 10);
+      }
+
+      // Try to kill the process
+      let killSuccess = false;
+      if (processId) {
+        try {
+          // Try graceful termination first (SIGTERM)
+          try {
+            process.kill(processId, 'SIGTERM');
+            // Wait a bit to see if process terminates
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            // Check if process is still alive (on Unix systems)
+            try {
+              process.kill(processId, 0); // Signal 0 checks if process exists
+              // Process still exists, try SIGKILL
+              process.kill(processId, 'SIGKILL');
+              console.log(`[SCAN] Sent SIGKILL to process ${processId}`);
+            } catch (checkErr) {
+              // Process doesn't exist (good, it terminated)
+              console.log(`[SCAN] Process ${processId} terminated successfully`);
+            }
+            killSuccess = true;
+          } catch (err) {
+            // Process might not exist or we don't have permission
+            console.error(`[SCAN] Failed to kill process ${processId}: ${err}`);
+            // Try SIGKILL as fallback
+            try {
+              process.kill(processId, 'SIGKILL');
+              killSuccess = true;
+              console.log(`[SCAN] Sent SIGKILL to process ${processId} (fallback)`);
+            } catch (killErr) {
+              console.error(`[SCAN] SIGKILL also failed: ${killErr}`);
+            }
+          }
+        } catch (err) {
+          console.error(`[SCAN] Error attempting to kill process: ${err}`);
+        }
+      } else {
+        // If no PID found, try to find and kill Python processes running main.py
+        try {
+          const { execSync } = await import("child_process");
+          const path = await import("path");
+          const backendDir = path.resolve(process.cwd(), "backend");
+          const pythonScript = path.join(backendDir, "main.py");
+          
+          // Find processes running main.py
+          try {
+            if (process.platform === 'win32') {
+              // Windows: tasklist and taskkill
+              execSync(`taskkill /F /FI "WINDOWTITLE eq *main.py*"`, { stdio: 'ignore' });
+            } else {
+              // Unix/Linux/Mac: pkill or killall
+              execSync(`pkill -f "python.*main.py"`, { stdio: 'ignore' });
+            }
+            killSuccess = true;
+            console.log(`[SCAN] Attempted to kill Python processes running main.py`);
+          } catch (pkillErr) {
+            console.error(`[SCAN] Failed to kill processes: ${pkillErr}`);
+          }
+        } catch (err) {
+          console.error(`[SCAN] Error finding processes: ${err}`);
+        }
+      }
+
+      // Mark scan as cancelled in database
+      await pool.query(`
+        UPDATE scan_status
+        SET status = 'cancelled',
+            completed_at = CURRENT_TIMESTAMP,
+            error_message = 'Scan terminated by user' || CASE WHEN $1 THEN ' (process killed)' ELSE '' END,
+            updated_at = CURRENT_TIMESTAMP
+        WHERE scan_id = $2
+      `, [killSuccess, scanId]);
+
+      res.json({
+        success: true,
+        message: killSuccess 
+          ? "Scan terminated successfully" 
+          : "Scan marked as cancelled (process may still be running)",
+        scanId: scanId,
+        processKilled: killSuccess
+      });
+    } catch (error) {
+      console.error("[SCAN] Error terminating scan:", error);
+      res.status(500).json({
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error"
       });
     }
   });

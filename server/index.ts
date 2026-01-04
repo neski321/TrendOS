@@ -47,6 +47,18 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
+      // Skip logging for frequent polling endpoints (health checks, status checks)
+      const pathWithoutQuery = path.split('?')[0];
+      const isPollingEndpoint = pathWithoutQuery === "/api/scan/status" || 
+                                 pathWithoutQuery === "/api/health" ||
+                                 pathWithoutQuery === "/api/scanner-stats";
+      
+      // Only log polling endpoints if they take too long or return errors
+      if (isPollingEndpoint && res.statusCode === 200 && duration < 500) {
+        // Skip logging for fast, successful polling requests
+        return;
+      }
+      
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       
       if (capturedJsonResponse) {

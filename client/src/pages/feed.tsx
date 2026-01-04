@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Search, Filter, Radio, Zap, Loader2, Music, Trophy, Users, Newspaper, Sparkles } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useCandidates, useScannerStats, useMetrics, useBackendHealth } from "@/lib/api";
+import { useCandidates, useScannerStats, useMetrics, useBackendHealth, useScanStatus } from "@/lib/api";
 import { BackendStatus } from "@/components/backend-status";
 import { cn } from "@/lib/utils";
 import { useLocation } from "wouter";
@@ -30,7 +30,9 @@ export default function Feed() {
   const { data: scannerStats } = useScannerStats();
   const { data: metrics } = useMetrics();
   const { data: health } = useBackendHealth();
-  const isScanning = isFetching;
+  const { data: scanStatus } = useScanStatus();
+  // Use actual scan status from backend, not query fetching state
+  const isScanning = scanStatus?.isRunning ?? false;
 
   // Calculate active entities count from metrics
   const activeEntitiesCount = metrics?.activeEntities || 0;
