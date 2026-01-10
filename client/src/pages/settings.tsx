@@ -42,6 +42,7 @@ export default function Settings() {
       top_n_per_category_for_discord: 5,
       min_video_duration_seconds: 60,
       max_video_duration_seconds: 7200,
+      min_view_count: 1000,
     },
     discord: {
       enabled: true,
@@ -70,6 +71,7 @@ export default function Settings() {
           top_n_per_category_for_discord: settings.limits?.top_n_per_category_for_discord ?? 5,
           min_video_duration_seconds: settings.limits?.min_video_duration_seconds ?? 60,
           max_video_duration_seconds: settings.limits?.max_video_duration_seconds ?? 7200,
+          min_view_count: settings.limits?.min_view_count ?? 1000,
         },
         discord: {
           enabled: settings.discord?.enabled ?? true,
@@ -889,6 +891,17 @@ export default function Settings() {
                     />
                     <p className="text-xs text-muted-foreground">Maximum video length to consider</p>
                  </div>
+              </div>
+              
+              <div className="space-y-2">
+                 <Label>Minimum View Count</Label>
+                 <Input 
+                   type="number" 
+                   value={formData.limits.min_view_count} 
+                   className="font-mono"
+                   onChange={(e) => updateLimits("min_view_count", parseInt(e.target.value) || 0)}
+                 />
+                 <p className="text-xs text-muted-foreground">Only consider videos with at least this many views (default: 1000)</p>
               </div>
             </CardContent>
           </Card>

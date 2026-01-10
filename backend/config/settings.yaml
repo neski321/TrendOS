@@ -10,6 +10,7 @@ limits:
   top_n_per_category_for_discord: 5
   min_video_duration_seconds: 60
   max_video_duration_seconds: 7200  # 3 hours
+  min_view_count: 1000  # Minimum views required for a video to be considered
 
 discord:
   enabled: true
