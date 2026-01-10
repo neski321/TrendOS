@@ -562,6 +562,7 @@ export interface Settings {
     top_n_per_category_for_discord: number;
     min_video_duration_seconds: number;
     max_video_duration_seconds: number;
+    min_view_count: number;
   };
   discord: {
     enabled: boolean;

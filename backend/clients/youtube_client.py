@@ -107,7 +107,7 @@ class VideoCandidate:
 class YouTubeClient:
     """Client for interacting with YouTube Data API v3."""
     
-    def __init__(self, api_key_manager, rate_limit_delay: float = 1.0, quota_tracker=None):
+    def __init__(self, api_key_manager, rate_limit_delay: float = 1.0, quota_tracker=None, min_view_count: int = 1000):
         """
         Initialize YouTube client.
         
@@ -115,6 +115,7 @@ class YouTubeClient:
             api_key_manager: APIKeyManager instance for managing multiple API keys
             rate_limit_delay: Delay in seconds between API calls to respect rate limits
             quota_tracker: Optional QuotaTracker instance for quota management
+            min_view_count: Minimum view count required for a video to be considered
         """
         from core.api_key_manager import APIKeyManager
         
@@ -127,6 +128,7 @@ class YouTubeClient:
         self.rate_limit_delay = rate_limit_delay
         self._last_request_time = 0.0
         self.quota_tracker = quota_tracker
+        self.min_view_count = min_view_count
         self._current_api_key = None
         self._youtube_service = None
         self._refresh_youtube_service()
@@ -273,10 +275,10 @@ class YouTubeClient:
                         if not is_english_content(snippet, video_id):
                             continue
                         
-                        # Filter out videos with less than 1000 views
+                        # Filter out videos with less than minimum view count
                         view_count = int(statistics.get('viewCount', 0))
-                        if view_count < 1000:
-                            logger.debug(f"Skipping video {video_id}: only {view_count} views (minimum: 1000)")
+                        if view_count < self.min_view_count:
+                            logger.debug(f"Skipping video {video_id}: only {view_count} views (minimum: {self.min_view_count})")
                             continue
                         
                         published_at = parse_iso_datetime(snippet['publishedAt'])
@@ -425,10 +427,10 @@ class YouTubeClient:
                         if not is_english_content(snippet, video_id):
                             continue
                         
-                        # Filter out videos with less than 1000 views
+                        # Filter out videos with less than minimum view count
                         view_count = int(statistics.get('viewCount', 0))
-                        if view_count < 1000:
-                            logger.debug(f"Skipping video {video_id}: only {view_count} views (minimum: 1000)")
+                        if view_count < self.min_view_count:
+                            logger.debug(f"Skipping video {video_id}: only {view_count} views (minimum: {self.min_view_count})")
                             continue
                         
                         published_at = parse_iso_datetime(snippet['publishedAt'])
@@ -579,10 +581,10 @@ class YouTubeClient:
                         if not is_english_content(snippet, video_id):
                             continue
                         
-                        # Filter out videos with less than 1000 views
+                        # Filter out videos with less than minimum view count
                         view_count = int(statistics.get('viewCount', 0))
-                        if view_count < 1000:
-                            logger.debug(f"Skipping video {video_id}: only {view_count} views (minimum: 1000)")
+                        if view_count < self.min_view_count:
+                            logger.debug(f"Skipping video {video_id}: only {view_count} views (minimum: {self.min_view_count})")
                             continue
                         
                         # Parse video data

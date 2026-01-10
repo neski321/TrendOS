@@ -19,8 +19,8 @@ export default function Feed() {
   const [selectedEntity, setSelectedEntity] = useState<string | null>(null);
   const [showAllEntities, setShowAllEntities] = useState(false);
   
-  // Parse URL query parameters for minScore
-  const urlParams = new URLSearchParams(location.split('?')[1] || '');
+  // Parse URL query parameters for minScore (use window.location.search to get query params)
+  const urlParams = new URLSearchParams(window.location.search);
   const minScoreParam = urlParams.get('minScore');
   const minScore = minScoreParam ? parseFloat(minScoreParam) : 0;
   const isHighScoreView = minScore >= 90;

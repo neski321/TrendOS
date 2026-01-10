@@ -51,6 +51,7 @@ class LimitsConfig:
     top_n_per_category_for_discord: int
     min_video_duration_seconds: int
     max_video_duration_seconds: int
+    min_view_count: int = 1000  # Default to 1000 if not specified
 
 
 @dataclass

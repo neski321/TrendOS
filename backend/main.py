@@ -117,7 +117,8 @@ def main():
     youtube_client = YouTubeClient(
         api_key_manager=api_key_manager,
         rate_limit_delay=settings_config.api.youtube.rate_limit_delay_seconds,
-        quota_tracker=quota_tracker
+        quota_tracker=quota_tracker,
+        min_view_count=settings_config.limits.min_view_count
     )
     tiktok_client = TikTokClient()  # Stub for now
     
