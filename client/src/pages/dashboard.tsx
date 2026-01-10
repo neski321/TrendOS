@@ -10,7 +10,7 @@ import { Link } from "wouter";
 
 export default function Dashboard() {
   const { data: metrics, isLoading: metricsLoading } = useMetrics();
-  const { data: topPicks = [], isLoading: picksLoading } = useTopPicks(3);
+  const { data: topPicks = [], isLoading: picksLoading } = useTopPicks(4);
   const triggerScan = useTriggerScan();
   const { data: scanStatus, isLoading: scanStatusLoading } = useScanStatus();
   

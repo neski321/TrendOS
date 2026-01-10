@@ -479,7 +479,7 @@ export async function registerRoutes(
   // Get top picks (score > 90)
   app.get("/api/top-picks", async (req, res) => {
     try {
-      const { limit = "3" } = req.query;
+      const { limit = "4" } = req.query;
       
       const result = await pool.query(`
         SELECT 
@@ -489,6 +489,7 @@ export async function registerRoutes(
           published_at as "publishedAt",
           views,
           likes,
+          duration_seconds as "durationSeconds",
           COALESCE(ROUND(views::numeric / NULLIF(EXTRACT(EPOCH FROM (NOW() - published_at)) / 3600, 0), 2), 0) as velocity,
           score,
           category,
