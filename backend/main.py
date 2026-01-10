@@ -150,17 +150,36 @@ def main():
         scan_status_tracker.start_scan(scan_id, "Starting candidate collection...")
         
         # Collect candidates from all categories
+        # Process in specific order: celebrity → hip_hop → nba
+        category_order = ['celebrity', 'hip_hop', 'nba']
         all_candidates = []
         
-        for category_name, category_config in entities_config.categories.items():
-            logger.info(f"Scanning category: {category_name}")
+        # Process categories in the specified order
+        for category_name in category_order:
+            if category_name not in entities_config.categories:
+                logger.warning(f"Category '{category_name}' not found in config, skipping")
+                continue
+            
+            category_config = entities_config.categories[category_name]
+            
+            # Check if category has any searchable content (entities, channels, or keywords)
+            has_entities = category_config.entities and len(category_config.entities) > 0
+            has_channels = category_config.channels and len(category_config.channels) > 0
+            has_keywords = category_config.category_keywords and len(category_config.category_keywords) > 0
+            
+            if not (has_entities or has_channels or has_keywords):
+                logger.warning(f"Category '{category_name}' has no entities, channels, or keywords configured, skipping")
+                continue
+            
+            logger.info(f"Scanning category: {category_name} (entities: {len(category_config.entities) if has_entities else 0}, channels: {len(category_config.channels) if has_channels else 0}, keywords: {len(category_config.category_keywords) if has_keywords else 0})")
             scan_status_tracker.update_progress(
                 scan_id,
                 progress_message=f"Scanning category: {category_name}..."
             )
         
-            # Search for entities
-            for entity in category_config.entities:
+            # Search for entities (if any are configured)
+            if has_entities:
+                for entity in category_config.entities:
                 for keyword in entities_config.keywords:
                     try:
                         logger.info(f"  Searching: {entity} + {keyword}")
@@ -175,9 +194,12 @@ def main():
                     except Exception as e:
                         logger.error(f"  Error searching {entity} + {keyword}: {e}")
                         continue
+            else:
+                logger.info(f"  No entities configured for {category_name}, skipping entity searches")
             
-            # Search for channels
-            for channel in category_config.channels:
+            # Search for channels (if any are configured)
+            if has_channels:
+                for channel in category_config.channels:
                 for keyword in entities_config.keywords:
                     try:
                         logger.info(f"  Searching channel: {channel} + {keyword}")
@@ -192,9 +214,12 @@ def main():
                     except Exception as e:
                         logger.error(f"  Error searching channel {channel} + {keyword}: {e}")
                         continue
+            else:
+                logger.info(f"  No channels configured for {category_name}, skipping channel searches")
             
-            # Search for category-wide trending content
-            for category_keyword in category_config.category_keywords:
+            # Search for category-wide trending content (if any keywords are configured)
+            if has_keywords:
+                for category_keyword in category_config.category_keywords:
                 try:
                     logger.info(f"  Searching category-wide trending: {category_keyword}")
                     # Use viewCount order to get trending content, limit results to avoid too many duplicates
@@ -209,6 +234,8 @@ def main():
                 except Exception as e:
                     logger.error(f"  Error searching category keyword {category_keyword}: {e}")
                     continue
+            else:
+                logger.info(f"  No category keywords configured for {category_name}, skipping category keyword searches")
         
         logger.info(f"Found {len(all_candidates)} total candidates before deduplication")
     

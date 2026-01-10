@@ -57,7 +57,7 @@ export async function registerRoutes(
             lastScanTime: scanTime,
             lastScanStatus: lastScan.status,
             lastScanId: lastScan.scan_id,
-            message: `A scan was already run today at ${scanTime}. Please try again tomorrow.`
+            message: `A scan was already run today at ${scanTime}. Please wait 24 hours for API quotas to refresh before running another scan.`
           }
         });
       }
@@ -218,12 +218,17 @@ export async function registerRoutes(
       // For now, find the most recent pending/running scan and update it
       setTimeout(async () => {
         try {
+          // Use a subquery to find the scan_id first, then update it
           await pool.query(`
             UPDATE scan_status
             SET progress_message = COALESCE(progress_message, '') || ' [PID: ' || $1 || ']'
-            WHERE status = 'running'
-            ORDER BY started_at DESC
-            LIMIT 1
+            WHERE scan_id = (
+              SELECT scan_id
+              FROM scan_status
+              WHERE status = 'running'
+              ORDER BY started_at DESC
+              LIMIT 1
+            )
           `, [processId.toString()]);
         } catch (err) {
           console.error(`[SCAN] Error storing process ID: ${err}`);
