@@ -7,6 +7,20 @@ import { formatDistanceToNow } from "date-fns";
 import { toast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 
+// Helper to format duration in seconds to MM:SS or HH:MM:SS
+function formatDuration(seconds: number): string {
+  if (!seconds || seconds === 0) return "0:00";
+  
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const secs = seconds % 60;
+  
+  if (hours > 0) {
+    return `${hours}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  }
+  return `${minutes}:${secs.toString().padStart(2, '0')}`;
+}
+
 export function TrendCard({ candidate }: { candidate: VideoCandidate }) {
   const scoreColor = candidate.score >= 90 ? "text-primary" : candidate.score >= 80 ? "text-secondary" : "text-muted-foreground";
   const borderColor = candidate.score >= 90 ? "border-primary/50" : "border-border";
@@ -72,7 +86,7 @@ export function TrendCard({ candidate }: { candidate: VideoCandidate }) {
                </Badge>
             </div>
             <div className="absolute bottom-2 right-2 bg-black/90 px-1.5 py-0.5 rounded text-[10px] font-mono text-white leading-none">
-              12:45
+              {formatDuration(candidate.durationSeconds || 0)}
             </div>
           </div>
 
