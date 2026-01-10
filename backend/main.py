@@ -162,80 +162,103 @@ def main():
             
             category_config = entities_config.categories[category_name]
             
-            # Check if category has any searchable content (entities, channels, or keywords)
-            has_entities = category_config.entities and len(category_config.entities) > 0
-            has_channels = category_config.channels and len(category_config.channels) > 0
-            has_keywords = category_config.category_keywords and len(category_config.category_keywords) > 0
-            
-            if not (has_entities or has_channels or has_keywords):
-                logger.warning(f"Category '{category_name}' has no entities, channels, or keywords configured, skipping")
+            # Check if category is enabled
+            if not category_config.enabled:
+                logger.info(f"Category '{category_name}' is disabled, skipping")
                 continue
             
-            logger.info(f"Scanning category: {category_name} (entities: {len(category_config.entities) if has_entities else 0}, channels: {len(category_config.channels) if has_channels else 0}, keywords: {len(category_config.category_keywords) if has_keywords else 0})")
+            # Check if category has any searchable content (entities, channels, or keywords)
+            has_entities = category_config.enable_entities and category_config.entities and len(category_config.entities) > 0
+            has_entity_trending = category_config.enable_entity_trending and category_config.entities and len(category_config.entities) > 0
+            has_channels = category_config.enable_channels and category_config.channels and len(category_config.channels) > 0
+            has_keywords = category_config.enable_category_keywords and category_config.category_keywords and len(category_config.category_keywords) > 0
+            
+            if not (has_entities or has_entity_trending or has_channels or has_keywords):
+                logger.warning(f"Category '{category_name}' has no enabled sections or content configured, skipping")
+                continue
+            
+            logger.info(f"Scanning category: {category_name} (entities: {len(category_config.entities) if has_entities else 0}, channels: {len(category_config.channels) if has_channels else 0}, keywords: {len(category_config.category_keywords) if has_keywords else 0}, entity_trending: {len(category_config.entities) if has_entity_trending else 0})")
             scan_status_tracker.update_progress(
                 scan_id,
                 progress_message=f"Scanning category: {category_name}..."
             )
         
-            # Search for entities (if any are configured)
+            # Search for entities + keywords (if enabled and configured)
             if has_entities:
                 for entity in category_config.entities:
-                for keyword in entities_config.keywords:
+                    for keyword in entities_config.keywords:
+                        try:
+                            logger.info(f"  Searching entity + keyword: {entity} + {keyword}")
+                            candidates = youtube_client.search_candidates(
+                                entity=entity,
+                                keyword=keyword,
+                                category=category_name,
+                                published_after=time_window_start,
+                                max_results=settings_config.api.youtube.max_results_per_query
+                            )
+                            all_candidates.extend(candidates)
+                        except Exception as e:
+                            logger.error(f"  Error searching {entity} + {keyword}: {e}")
+                            continue
+            else:
+                logger.info(f"  Entity + keyword searches disabled or no entities configured for {category_name}")
+            
+            # Search for entity-only trending content (if enabled and configured)
+            if has_entity_trending:
+                for entity in category_config.entities:
                     try:
-                        logger.info(f"  Searching: {entity} + {keyword}")
-                        candidates = youtube_client.search_candidates(
+                        logger.info(f"  Searching entity trending: {entity}")
+                        candidates = youtube_client.search_entity_trending(
                             entity=entity,
-                            keyword=keyword,
                             category=category_name,
                             published_after=time_window_start,
-                            max_results=settings_config.api.youtube.max_results_per_query
+                            max_results=min(settings_config.api.youtube.max_results_per_query, 20)  # Limit results for trending
                         )
                         all_candidates.extend(candidates)
                     except Exception as e:
-                        logger.error(f"  Error searching {entity} + {keyword}: {e}")
+                        logger.error(f"  Error searching entity trending for {entity}: {e}")
                         continue
             else:
-                logger.info(f"  No entities configured for {category_name}, skipping entity searches")
+                logger.info(f"  Entity trending searches disabled or no entities configured for {category_name}")
             
-            # Search for channels (if any are configured)
+            # Search for channels + keywords (if enabled and configured)
             if has_channels:
                 for channel in category_config.channels:
-                for keyword in entities_config.keywords:
+                    for keyword in entities_config.keywords:
+                        try:
+                            logger.info(f"  Searching channel + keyword: {channel} + {keyword}")
+                            candidates = youtube_client.search_candidates(
+                                entity=channel,
+                                keyword=keyword,
+                                category=category_name,
+                                published_after=time_window_start,
+                                max_results=settings_config.api.youtube.max_results_per_query
+                            )
+                            all_candidates.extend(candidates)
+                        except Exception as e:
+                            logger.error(f"  Error searching channel {channel} + {keyword}: {e}")
+                            continue
+            else:
+                logger.info(f"  Channel + keyword searches disabled or no channels configured for {category_name}")
+            
+            # Search for category-wide trending content (if enabled and configured)
+            if has_keywords:
+                for category_keyword in category_config.category_keywords:
                     try:
-                        logger.info(f"  Searching channel: {channel} + {keyword}")
-                        candidates = youtube_client.search_candidates(
-                            entity=channel,
-                            keyword=keyword,
+                        logger.info(f"  Searching category-wide trending: {category_keyword}")
+                        candidates = youtube_client.search_by_category_keyword(
+                            category_keyword=category_keyword,
                             category=category_name,
                             published_after=time_window_start,
-                            max_results=settings_config.api.youtube.max_results_per_query
+                            max_results=min(settings_config.api.youtube.max_results_per_query, 30),
+                            order="viewCount"
                         )
                         all_candidates.extend(candidates)
                     except Exception as e:
-                        logger.error(f"  Error searching channel {channel} + {keyword}: {e}")
+                        logger.error(f"  Error searching category keyword {category_keyword}: {e}")
                         continue
             else:
-                logger.info(f"  No channels configured for {category_name}, skipping channel searches")
-            
-            # Search for category-wide trending content (if any keywords are configured)
-            if has_keywords:
-                for category_keyword in category_config.category_keywords:
-                try:
-                    logger.info(f"  Searching category-wide trending: {category_keyword}")
-                    # Use viewCount order to get trending content, limit results to avoid too many duplicates
-                    candidates = youtube_client.search_by_category_keyword(
-                        category_keyword=category_keyword,
-                        category=category_name,
-                        published_after=time_window_start,
-                        max_results=min(settings_config.api.youtube.max_results_per_query, 30),  # Limit category searches
-                        order="viewCount"  # Get trending content by view count
-                    )
-                    all_candidates.extend(candidates)
-                except Exception as e:
-                    logger.error(f"  Error searching category keyword {category_keyword}: {e}")
-                    continue
-            else:
-                logger.info(f"  No category keywords configured for {category_name}, skipping category keyword searches")
+                logger.info(f"  Category keyword searches disabled or no category keywords configured for {category_name}")
         
         logger.info(f"Found {len(all_candidates)} total candidates before deduplication")
     

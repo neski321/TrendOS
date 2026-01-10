@@ -107,7 +107,6 @@ export async function registerRoutes(
       // 1. Try to use the Python from the startup script (exported as PYTHON_EXECUTABLE)
       if (process.env.PYTHON_EXECUTABLE && fs.existsSync(process.env.PYTHON_EXECUTABLE)) {
         pythonExec = process.env.PYTHON_EXECUTABLE;
-        console.log(`[SCAN] Using Python from startup script: ${pythonExec}`);
       }
       // 2. Try python3 command (Railway provides this)
       else {
@@ -115,7 +114,6 @@ export async function registerRoutes(
           const python3Path = execSync("which python3", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
           if (python3Path && fs.existsSync(python3Path)) {
             pythonExec = python3Path;
-            console.log(`[SCAN] Using python3 from PATH: ${pythonExec}`);
           }
         } catch (e) {
           // python3 not in PATH
@@ -128,7 +126,6 @@ export async function registerRoutes(
           const pythonPath = execSync("which python", { encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
           if (pythonPath && fs.existsSync(pythonPath)) {
             pythonExec = pythonPath;
-            console.log(`[SCAN] Using python from PATH: ${pythonExec}`);
           }
         } catch (e) {
           // python not in PATH
@@ -153,7 +150,6 @@ export async function registerRoutes(
           stdio: ["ignore", "pipe", "ignore"],
           timeout: 5000 
         }).trim();
-        console.log(`[SCAN] Verified Python: ${pythonVersion}`);
       } catch (e) {
         return res.status(500).json({
           success: false,
@@ -211,7 +207,6 @@ export async function registerRoutes(
       
       // Store process info for potential status checking
       const processId = pythonProcess.pid;
-      console.log(`[SCAN] Scan process spawned successfully (PID: ${processId})`);
       
       // Get the scan_id from the Python process (it will create one)
       // We'll update it with the process ID after a short delay
@@ -787,8 +782,7 @@ export async function registerRoutes(
                 updated_at = CURRENT_TIMESTAMP
             `, ['entities', JSON.stringify(yamlEntities)]);
           } catch (saveError) {
-            console.warn("Could not save entities to database:", saveError);
-            // Continue anyway, just return YAML entities
+            // Silently fail - database save is not critical, YAML entities will still be returned
           }
           
           res.json(yamlEntities);
@@ -986,10 +980,8 @@ export async function registerRoutes(
               process.kill(processId, 0); // Signal 0 checks if process exists
               // Process still exists, try SIGKILL
               process.kill(processId, 'SIGKILL');
-              console.log(`[SCAN] Sent SIGKILL to process ${processId}`);
             } catch (checkErr) {
               // Process doesn't exist (good, it terminated)
-              console.log(`[SCAN] Process ${processId} terminated successfully`);
             }
             killSuccess = true;
           } catch (err) {
@@ -999,7 +991,6 @@ export async function registerRoutes(
             try {
               process.kill(processId, 'SIGKILL');
               killSuccess = true;
-              console.log(`[SCAN] Sent SIGKILL to process ${processId} (fallback)`);
             } catch (killErr) {
               console.error(`[SCAN] SIGKILL also failed: ${killErr}`);
             }
@@ -1025,7 +1016,6 @@ export async function registerRoutes(
               execSync(`pkill -f "python.*main.py"`, { stdio: 'ignore' });
             }
             killSuccess = true;
-            console.log(`[SCAN] Attempted to kill Python processes running main.py`);
           } catch (pkillErr) {
             console.error(`[SCAN] Failed to kill processes: ${pkillErr}`);
           }

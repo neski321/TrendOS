@@ -408,6 +408,159 @@ class YouTubeClient:
         logger.info(f"Found {len(candidates)} candidates for category keyword '{category_keyword}'")
         return candidates
     
+    def search_entity_trending(
+        self,
+        entity: str,
+        category: str,
+        published_after: datetime,
+        max_results: int = 20
+    ) -> List[VideoCandidate]:
+        """
+        Search for trending videos related to a specific entity, sorted by viewCount.
+        This is useful for catching trending topics where a specific keyword might not be known.
+        
+        For example: "Idris Elba" being knighted - searching just "Idris Elba" sorted by views
+        will catch recent trending news without needing specific keywords like "interview" or "podcast".
+        
+        Args:
+            entity: Entity name to search for (e.g., "Idris Elba", "LeBron James")
+            category: Category name (hip_hop, nba, celebrity)
+            published_after: Only return videos published after this datetime
+            max_results: Maximum number of results to return (default: 20 to avoid too many results)
+            
+        Returns:
+            List of VideoCandidate objects
+        """
+        query = entity  # Search only by entity name, no additional keywords
+        published_after_iso = format_iso_datetime(published_after)
+        
+        candidates = []
+        next_page_token = None
+        
+        try:
+            while len(candidates) < max_results:
+                self._throttle()
+                
+                # Get available API key with sufficient quota
+                required_units = 100  # search.list costs 100 units
+                api_key = self.api_key_manager.get_available_key(required_units)
+                if api_key is None:
+                    logger.error("No API keys available with sufficient quota for entity trending search")
+                    break
+                
+                # Refresh service if key changed
+                if api_key != self._current_api_key:
+                    self._refresh_youtube_service(api_key)
+                
+                # Search for videos (English content only, sorted by viewCount to find trending)
+                search_response = self.youtube.search().list(
+                    q=query,
+                    part='id,snippet',
+                    type='video',
+                    order='viewCount',  # Sort by viewCount to find trending videos
+                    publishedAfter=published_after_iso,
+                    maxResults=min(50, max_results - len(candidates)),
+                    pageToken=next_page_token,
+                    relevanceLanguage='en',
+                    regionCode='US'
+                ).execute()
+                
+                # Record quota usage
+                if self.quota_tracker:
+                    self.quota_tracker.record_quota_usage('search.list', api_key=api_key)
+                
+                if not search_response.get('items'):
+                    break
+                
+                # Extract video IDs
+                video_ids = [item['id']['videoId'] for item in search_response['items']]
+                if not video_ids:
+                    break
+                
+                # Fetch video details (statistics, duration, etc.)
+                self._throttle()
+                
+                required_units = len(video_ids)  # videos.list costs 1 unit per video
+                api_key = self.api_key_manager.get_available_key(required_units)
+                if api_key is None:
+                    logger.error("No API keys available with sufficient quota for video details (entity trending)")
+                    break
+                
+                # Refresh service if key changed
+                if api_key != self._current_api_key:
+                    self._refresh_youtube_service(api_key)
+                
+                videos_response = self.youtube.videos().list(
+                    part='statistics,contentDetails,snippet',
+                    id=','.join(video_ids)
+                ).execute()
+                
+                # Record quota usage
+                if self.quota_tracker:
+                    self.quota_tracker.record_quota_usage('videos.list', units=len(video_ids), api_key=api_key)
+                
+                # Process each video
+                for video_item in videos_response.get('items', []):
+                    try:
+                        video_id = video_item['id']
+                        snippet = video_item['snippet']
+                        statistics = video_item.get('statistics', {})
+                        content_details = video_item.get('contentDetails', {})
+                        
+                        # Stricter English-only filtering (check defaultLanguage and defaultAudioLanguage)
+                        default_language = snippet.get('defaultLanguage', '').lower()
+                        default_audio_language = snippet.get('defaultAudioLanguage', '').lower()
+                        
+                        # Skip if video is in a language other than English
+                        if (default_language and default_language != 'en') or \
+                           (default_audio_language and default_audio_language != 'en'):
+                            logger.debug(f"Skipping non-English video {video_id} (Default Lang: {default_language}, Audio Lang: {default_audio_language})")
+                            continue
+                        
+                        # Parse video data
+                        published_at = parse_iso_datetime(snippet['publishedAt'])
+                        duration_seconds = self._parse_duration(content_details.get('duration', 'PT0S'))
+                        
+                        candidate = VideoCandidate(
+                            video_id=video_id,
+                            title=snippet.get('title', ''),
+                            channel_title=snippet.get('channelTitle', ''),
+                            published_at=published_at,
+                            views=int(statistics.get('viewCount', 0)),
+                            likes=int(statistics.get('likeCount', 0)),
+                            comments=int(statistics.get('commentCount', 0)),
+                            duration_seconds=duration_seconds,
+                            url=f"https://www.youtube.com/watch?v={video_id}",
+                            category=category,
+                            entity_matched=entity,  # Matched by the entity itself (no keyword)
+                            description=snippet.get('description', ''),
+                            thumbnail_url=snippet.get('thumbnails', {}).get('high', {}).get('url', '')
+                        )
+                        candidates.append(candidate)
+                    except (KeyError, ValueError) as e:
+                        logger.warning(f"Error parsing video {video_item.get('id', 'unknown')}: {e}")
+                        continue
+                
+                # Check for next page
+                next_page_token = search_response.get('nextPageToken')
+                if not next_page_token:
+                    break
+        
+        except HttpError as e:
+            logger.error(f"YouTube API error for entity trending '{query}': {e}")
+            if e.resp.status == 403:
+                logger.error("Rate limit exceeded or API key invalid")
+                if self._current_api_key:
+                    self.api_key_manager.mark_key_exhausted(self._current_api_key)
+                    logger.info("Marked API key as exhausted, will try next key on retry")
+            raise
+        except Exception as e:
+            logger.error(f"Unexpected error searching YouTube for entity trending: {e}")
+            raise
+        
+        logger.info(f"Found {len(candidates)} trending candidates for entity '{entity}'")
+        return candidates
+    
     def get_trending(self, region: str = "US", max_results: int = 50) -> List[VideoCandidate]:
         """
         Get trending videos for a region (stub for future implementation).

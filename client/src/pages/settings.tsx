@@ -117,6 +117,38 @@ export default function Settings() {
   };
 
   // Entity management functions
+  const toggleCategory = (category: 'hip_hop' | 'nba' | 'celebrity', enabled: boolean) => {
+    if (!entitiesData) return;
+    
+    setEntitiesData(prev => {
+      if (!prev) return prev;
+      const newEntities = { ...prev };
+      newEntities.categories[category] = {
+        ...newEntities.categories[category],
+        enabled: enabled
+      };
+      // Auto-save to database
+      updateEntities(newEntities);
+      return newEntities;
+    });
+  };
+
+  const toggleSection = (category: 'hip_hop' | 'nba' | 'celebrity', section: 'enable_entities' | 'enable_entity_trending' | 'enable_channels' | 'enable_category_keywords', enabled: boolean) => {
+    if (!entitiesData) return;
+    
+    setEntitiesData(prev => {
+      if (!prev) return prev;
+      const newEntities = { ...prev };
+      newEntities.categories[category] = {
+        ...newEntities.categories[category],
+        [section]: enabled
+      };
+      // Auto-save to database
+      updateEntities(newEntities);
+      return newEntities;
+    });
+  };
+
   const addEntity = (category: 'hip_hop' | 'nba' | 'celebrity', entityName: string) => {
     if (!entityName.trim() || !entitiesData) return;
     
@@ -270,8 +302,66 @@ export default function Settings() {
                 <>
                   {/* Hip Hop Category */}
                   <div className="space-y-4 p-4 border border-border rounded-lg">
-                    <h3 className="font-semibold text-lg">Hip Hop</h3>
-                    <div className="grid md:grid-cols-2 gap-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-lg">Hip Hop</h3>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-sm text-muted-foreground">
+                          {entitiesData.categories.hip_hop.enabled ?? true ? 'Enabled' : 'Disabled'}
+                        </Label>
+                        <Switch
+                          checked={entitiesData.categories.hip_hop.enabled ?? true}
+                          onCheckedChange={(checked) => toggleCategory('hip_hop', checked)}
+                        />
+                      </div>
+                    </div>
+                    
+                    {(entitiesData.categories.hip_hop.enabled ?? true) && (
+                      <>
+                        {/* Section Toggles for Hip Hop */}
+                        <div className="space-y-3 p-3 bg-muted/20 rounded-md">
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <Label className="text-sm">Entity + Keyword Searches</Label>
+                              <p className="text-xs text-muted-foreground">Search for entities combined with keywords (e.g., "Drake interview")</p>
+                            </div>
+                            <Switch
+                              checked={entitiesData.categories.hip_hop.enable_entities ?? true}
+                              onCheckedChange={(checked) => toggleSection('hip_hop', 'enable_entities', checked)}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <Label className="text-sm">Entity Trending Searches</Label>
+                              <p className="text-xs text-muted-foreground">Find trending videos about entities (e.g., "Idris Elba" sorted by views)</p>
+                            </div>
+                            <Switch
+                              checked={entitiesData.categories.hip_hop.enable_entity_trending ?? true}
+                              onCheckedChange={(checked) => toggleSection('hip_hop', 'enable_entity_trending', checked)}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <Label className="text-sm">Channel + Keyword Searches</Label>
+                              <p className="text-xs text-muted-foreground">Search channels combined with keywords (e.g., "VladTV interview")</p>
+                            </div>
+                            <Switch
+                              checked={entitiesData.categories.hip_hop.enable_channels ?? true}
+                              onCheckedChange={(checked) => toggleSection('hip_hop', 'enable_channels', checked)}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <Label className="text-sm">Category Keyword Searches</Label>
+                              <p className="text-xs text-muted-foreground">Find trending content in category (e.g., "hip hop news")</p>
+                            </div>
+                            <Switch
+                              checked={entitiesData.categories.hip_hop.enable_category_keywords ?? true}
+                              onCheckedChange={(checked) => toggleSection('hip_hop', 'enable_category_keywords', checked)}
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="grid md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Entities</Label>
                         <div className="space-y-2">
@@ -357,14 +447,74 @@ export default function Settings() {
                         </div>
                       </div>
                     </div>
+                      </>
+                    )}
                   </div>
 
                   <Separator />
 
                   {/* NBA Category */}
                   <div className="space-y-4 p-4 border border-border rounded-lg">
-                    <h3 className="font-semibold text-lg">NBA</h3>
-                    <div className="grid md:grid-cols-2 gap-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-lg">NBA</h3>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-sm text-muted-foreground">
+                          {entitiesData.categories.nba.enabled ?? true ? 'Enabled' : 'Disabled'}
+                        </Label>
+                        <Switch
+                          checked={entitiesData.categories.nba.enabled ?? true}
+                          onCheckedChange={(checked) => toggleCategory('nba', checked)}
+                        />
+                      </div>
+                    </div>
+                    
+                    {(entitiesData.categories.nba.enabled ?? true) && (
+                      <>
+                        {/* Section Toggles for NBA */}
+                        <div className="space-y-3 p-3 bg-muted/20 rounded-md">
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <Label className="text-sm">Entity + Keyword Searches</Label>
+                              <p className="text-xs text-muted-foreground">Search for entities combined with keywords (e.g., "LeBron James interview")</p>
+                            </div>
+                            <Switch
+                              checked={entitiesData.categories.nba.enable_entities ?? true}
+                              onCheckedChange={(checked) => toggleSection('nba', 'enable_entities', checked)}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <Label className="text-sm">Entity Trending Searches</Label>
+                              <p className="text-xs text-muted-foreground">Find trending videos about entities (e.g., "Stephen Curry" sorted by views)</p>
+                            </div>
+                            <Switch
+                              checked={entitiesData.categories.nba.enable_entity_trending ?? true}
+                              onCheckedChange={(checked) => toggleSection('nba', 'enable_entity_trending', checked)}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <Label className="text-sm">Channel + Keyword Searches</Label>
+                              <p className="text-xs text-muted-foreground">Search channels combined with keywords (e.g., "ESPN interview")</p>
+                            </div>
+                            <Switch
+                              checked={entitiesData.categories.nba.enable_channels ?? true}
+                              onCheckedChange={(checked) => toggleSection('nba', 'enable_channels', checked)}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <Label className="text-sm">Category Keyword Searches</Label>
+                              <p className="text-xs text-muted-foreground">Find trending content in category (e.g., "NBA news")</p>
+                            </div>
+                            <Switch
+                              checked={entitiesData.categories.nba.enable_category_keywords ?? true}
+                              onCheckedChange={(checked) => toggleSection('nba', 'enable_category_keywords', checked)}
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="grid md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Entities</Label>
                         <div className="space-y-2">
@@ -450,14 +600,74 @@ export default function Settings() {
                         </div>
                       </div>
                     </div>
+                      </>
+                    )}
                   </div>
 
                   <Separator />
 
                   {/* Celebrity Category */}
                   <div className="space-y-4 p-4 border border-border rounded-lg">
-                    <h3 className="font-semibold text-lg">Celebrity</h3>
-                    <div className="grid md:grid-cols-2 gap-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="font-semibold text-lg">Celebrity</h3>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-sm text-muted-foreground">
+                          {entitiesData.categories.celebrity.enabled ?? true ? 'Enabled' : 'Disabled'}
+                        </Label>
+                        <Switch
+                          checked={entitiesData.categories.celebrity.enabled ?? true}
+                          onCheckedChange={(checked) => toggleCategory('celebrity', checked)}
+                        />
+                      </div>
+                    </div>
+                    
+                    {(entitiesData.categories.celebrity.enabled ?? true) && (
+                      <>
+                        {/* Section Toggles for Celebrity */}
+                        <div className="space-y-3 p-3 bg-muted/20 rounded-md">
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <Label className="text-sm">Entity + Keyword Searches</Label>
+                              <p className="text-xs text-muted-foreground">Search for entities combined with keywords (e.g., "Joe Rogan podcast")</p>
+                            </div>
+                            <Switch
+                              checked={entitiesData.categories.celebrity.enable_entities ?? true}
+                              onCheckedChange={(checked) => toggleSection('celebrity', 'enable_entities', checked)}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <Label className="text-sm">Entity Trending Searches</Label>
+                              <p className="text-xs text-muted-foreground">Find trending videos about entities (e.g., "Idris Elba" sorted by views)</p>
+                            </div>
+                            <Switch
+                              checked={entitiesData.categories.celebrity.enable_entity_trending ?? true}
+                              onCheckedChange={(checked) => toggleSection('celebrity', 'enable_entity_trending', checked)}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <Label className="text-sm">Channel + Keyword Searches</Label>
+                              <p className="text-xs text-muted-foreground">Search channels combined with keywords (e.g., "GQ Sports interview")</p>
+                            </div>
+                            <Switch
+                              checked={entitiesData.categories.celebrity.enable_channels ?? true}
+                              onCheckedChange={(checked) => toggleSection('celebrity', 'enable_channels', checked)}
+                            />
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <div className="space-y-0.5">
+                              <Label className="text-sm">Category Keyword Searches</Label>
+                              <p className="text-xs text-muted-foreground">Find trending content in category (e.g., "celebrity news")</p>
+                            </div>
+                            <Switch
+                              checked={entitiesData.categories.celebrity.enable_category_keywords ?? true}
+                              onCheckedChange={(checked) => toggleSection('celebrity', 'enable_category_keywords', checked)}
+                            />
+                          </div>
+                        </div>
+                        
+                        <div className="grid md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Entities</Label>
                         <div className="space-y-2">
@@ -543,6 +753,8 @@ export default function Settings() {
                         </div>
                       </div>
                     </div>
+                      </>
+                    )}
                   </div>
                 </>
               ) : (

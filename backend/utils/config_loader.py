@@ -18,6 +18,11 @@ class CategoryConfig:
     channels: list[str]
     category_keywords: list[str]
     priority_weights: dict[str, float]
+    enabled: bool = True  # Enable/disable entire category
+    enable_entities: bool = True  # Enable/disable entity + keyword searches
+    enable_entity_trending: bool = True  # Enable/disable entity trending searches (sorted by viewCount)
+    enable_channels: bool = True  # Enable/disable channel + keyword searches
+    enable_category_keywords: bool = True  # Enable/disable category keyword searches
 
 
 @dataclass
@@ -235,7 +240,12 @@ def load_entities_config(config_dir: Path, database_url: Optional[str] = None) -
             entities=cat_data.get("entities", []),
             channels=cat_data.get("channels", []),
             category_keywords=cat_data.get("category_keywords", []),
-            priority_weights=cat_data.get("priority_weights", {})
+            priority_weights=cat_data.get("priority_weights", {}),
+            enabled=cat_data.get("enabled", True),  # Default to True if not specified
+            enable_entities=cat_data.get("enable_entities", True),
+            enable_entity_trending=cat_data.get("enable_entity_trending", True),
+            enable_channels=cat_data.get("enable_channels", True),
+            enable_category_keywords=cat_data.get("enable_category_keywords", True)
         )
     
     return EntitiesConfig(

@@ -10,8 +10,6 @@ const viteLogger = createLogger();
 
 export async function setupVite(server: Server, app: Express) {
   try {
-    console.log("[VITE] Setting up Vite development server...");
-    
     const serverOptions = {
       middlewareMode: true,
       hmr: { server, path: "/vite-hmr" },
@@ -33,9 +31,7 @@ export async function setupVite(server: Server, app: Express) {
       appType: "custom",
     });
 
-    console.log("[VITE] Vite server created successfully");
     app.use(vite.middlewares);
-    console.log("[VITE] Vite middleware registered");
 
     app.use("*", async (req, res, next) => {
       const url = req.originalUrl;
@@ -69,8 +65,6 @@ export async function setupVite(server: Server, app: Express) {
         next(e);
       }
     });
-    
-    console.log("[VITE] Vite setup complete");
   } catch (error) {
     console.error("[VITE] Failed to setup Vite:", error);
     throw error;

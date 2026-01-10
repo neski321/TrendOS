@@ -258,6 +258,11 @@ export interface CategoryConfig {
   channels: string[];
   category_keywords: string[];
   priority_weights: Record<string, number>;
+  enabled?: boolean; // Enable/disable entire category
+  enable_entities?: boolean; // Enable/disable entity + keyword searches
+  enable_entity_trending?: boolean; // Enable/disable entity trending searches (sorted by viewCount)
+  enable_channels?: boolean; // Enable/disable channel + keyword searches
+  enable_category_keywords?: boolean; // Enable/disable category keyword searches
 }
 
 export interface EntitiesConfig {
