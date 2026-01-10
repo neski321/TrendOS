@@ -12,6 +12,80 @@ from utils.time_utils import parse_iso_datetime, format_iso_datetime
 logger = logging.getLogger(__name__)
 
 
+def is_english_content(snippet: dict, video_id: str) -> bool:
+    """
+    Strict check to determine if video content is in English.
+    
+    Checks:
+    1. defaultLanguage and defaultAudioLanguage fields
+    2. Character composition of title (Latin vs non-Latin characters)
+    3. Common non-English words (Romanized Hindi/Urdu/etc)
+    
+    Returns:
+        True if content appears to be English, False otherwise
+    """
+    # Check language fields
+    default_language = snippet.get('defaultLanguage', '').lower()
+    default_audio_language = snippet.get('defaultAudioLanguage', '').lower()
+    
+    # Allow English variants
+    english_variants = ['en', 'en-us', 'en-gb', 'en-ca', 'en-au', 'en-nz', 'en-in']
+    
+    # If language is explicitly set to non-English, reject
+    if default_language and default_language not in english_variants:
+        logger.debug(f"Skipping video {video_id}: defaultLanguage is '{default_language}'")
+        return False
+    
+    if default_audio_language and default_audio_language not in english_variants:
+        logger.debug(f"Skipping video {video_id}: defaultAudioLanguage is '{default_audio_language}'")
+        return False
+    
+    # Check title for non-Latin characters (catches Asian, Arabic, Cyrillic, etc.)
+    title = snippet.get('title', '').lower()
+    if title:
+        # Count characters that are Latin script (or common punctuation/digits/spaces)
+        # Unicode ranges: 0x0000-0x036F covers Latin, common punctuation, and digits
+        latin_chars = sum(1 for c in title if ord(c) < 0x0370 or c.isspace() or c.isdigit())
+        total_chars = len(title)
+        
+        if total_chars > 0:
+            latin_ratio = latin_chars / total_chars
+            # If less than 70% Latin characters, it's likely not English
+            if latin_ratio < 0.7:
+                logger.debug(f"Skipping video {video_id}: title has {latin_ratio:.1%} Latin characters ('{title[:50]}...')")
+                return False
+        
+        # Check for common Romanized Hindi/Urdu/Pakistani words
+        # These are words commonly used in South Asian content written in Latin script
+        non_english_words = [
+            'walay', 'wala', 'wali', 'walai', 'walon',  # Urdu: related to
+            'kaise', 'kese', 'kyse',  # How
+            'kitne', 'kitna', 'kitni',  # How much/many
+            'paise', 'paisa', 'rupay', 'rupee',  # Money (Pakistani/Indian)
+            'kamaye', 'kamaya', 'kama',  # Earn
+            'ilzam', 'ilzamat',  # Accusation
+            'mahine', 'mahina',  # Month
+            'mein', 'mai', 'muje', 'mujhe',  # In/me (different from English "me")
+            'kya', 'kiya', 'keya',  # What/did
+            'aur', 'aor',  # And
+            'bada', 'bara', 'bari',  # Big
+            'nani', 'nana',  # Grandmother/grandfather (when used with proper names)
+            'hua', 'huwa', 'howa',  # Happened
+            'gaya', 'gaye', 'gayi',  # Went
+            'hai', 'hain', 'ho',  # Is/are (when isolated)
+            'tiktok se', 'youtube se',  # "from TikTok/YouTube" pattern
+            'ne ', ' ne ',  # Subject marker (spaces important)
+        ]
+        
+        # Check for multiple non-English words (reduces false positives)
+        non_english_count = sum(1 for word in non_english_words if word in f' {title} ')
+        if non_english_count >= 2:
+            logger.debug(f"Skipping video {video_id}: title contains {non_english_count} Romanized non-English words ('{title[:80]}')")
+            return False
+    
+    return True
+
+
 @dataclass
 class VideoCandidate:
     """Represents a video candidate for clipping."""
@@ -195,17 +269,14 @@ class YouTubeClient:
                         statistics = video_item.get('statistics', {})
                         content_details = video_item.get('contentDetails', {})
                         
-                        # Filter for English content only (stricter check)
-                        default_language = snippet.get('defaultLanguage', '').lower()
-                        default_audio_language = snippet.get('defaultAudioLanguage', '').lower()
-                        
-                        # Skip if language is explicitly set and not English
-                        if default_language and default_language != 'en':
-                            logger.debug(f"Skipping video {video_id}: defaultLanguage is '{default_language}', not 'en'")
+                        # Strict English-only filter
+                        if not is_english_content(snippet, video_id):
                             continue
                         
-                        if default_audio_language and default_audio_language != 'en':
-                            logger.debug(f"Skipping video {video_id}: defaultAudioLanguage is '{default_audio_language}', not 'en'")
+                        # Filter out videos with less than 1000 views
+                        view_count = int(statistics.get('viewCount', 0))
+                        if view_count < 1000:
+                            logger.debug(f"Skipping video {video_id}: only {view_count} views (minimum: 1000)")
                             continue
                         
                         published_at = parse_iso_datetime(snippet['publishedAt'])
@@ -216,7 +287,7 @@ class YouTubeClient:
                             title=snippet.get('title', ''),
                             channel_title=snippet.get('channelTitle', ''),
                             published_at=published_at,
-                            views=int(statistics.get('viewCount', 0)),
+                            views=view_count,
                             likes=int(statistics.get('likeCount', 0)),
                             comments=int(statistics.get('commentCount', 0)),
                             duration_seconds=duration_seconds,
@@ -350,17 +421,14 @@ class YouTubeClient:
                         statistics = video_item.get('statistics', {})
                         content_details = video_item.get('contentDetails', {})
                         
-                        # Filter for English content only (stricter check)
-                        default_language = snippet.get('defaultLanguage', '').lower()
-                        default_audio_language = snippet.get('defaultAudioLanguage', '').lower()
-                        
-                        # Skip if language is explicitly set and not English
-                        if default_language and default_language != 'en':
-                            logger.debug(f"Skipping video {video_id}: defaultLanguage is '{default_language}', not 'en'")
+                        # Strict English-only filter
+                        if not is_english_content(snippet, video_id):
                             continue
                         
-                        if default_audio_language and default_audio_language != 'en':
-                            logger.debug(f"Skipping video {video_id}: defaultAudioLanguage is '{default_audio_language}', not 'en'")
+                        # Filter out videos with less than 1000 views
+                        view_count = int(statistics.get('viewCount', 0))
+                        if view_count < 1000:
+                            logger.debug(f"Skipping video {video_id}: only {view_count} views (minimum: 1000)")
                             continue
                         
                         published_at = parse_iso_datetime(snippet['publishedAt'])
@@ -372,7 +440,7 @@ class YouTubeClient:
                             title=snippet.get('title', ''),
                             channel_title=snippet.get('channelTitle', ''),
                             published_at=published_at,
-                            views=int(statistics.get('viewCount', 0)),
+                            views=view_count,
                             likes=int(statistics.get('likeCount', 0)),
                             comments=int(statistics.get('commentCount', 0)),
                             duration_seconds=duration_seconds,
@@ -507,14 +575,14 @@ class YouTubeClient:
                         statistics = video_item.get('statistics', {})
                         content_details = video_item.get('contentDetails', {})
                         
-                        # Stricter English-only filtering (check defaultLanguage and defaultAudioLanguage)
-                        default_language = snippet.get('defaultLanguage', '').lower()
-                        default_audio_language = snippet.get('defaultAudioLanguage', '').lower()
+                        # Strict English-only filter
+                        if not is_english_content(snippet, video_id):
+                            continue
                         
-                        # Skip if video is in a language other than English
-                        if (default_language and default_language != 'en') or \
-                           (default_audio_language and default_audio_language != 'en'):
-                            logger.debug(f"Skipping non-English video {video_id} (Default Lang: {default_language}, Audio Lang: {default_audio_language})")
+                        # Filter out videos with less than 1000 views
+                        view_count = int(statistics.get('viewCount', 0))
+                        if view_count < 1000:
+                            logger.debug(f"Skipping video {video_id}: only {view_count} views (minimum: 1000)")
                             continue
                         
                         # Parse video data
@@ -526,7 +594,7 @@ class YouTubeClient:
                             title=snippet.get('title', ''),
                             channel_title=snippet.get('channelTitle', ''),
                             published_at=published_at,
-                            views=int(statistics.get('viewCount', 0)),
+                            views=view_count,
                             likes=int(statistics.get('likeCount', 0)),
                             comments=int(statistics.get('commentCount', 0)),
                             duration_seconds=duration_seconds,
