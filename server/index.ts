@@ -47,72 +47,28 @@ app.use((req, res, next) => {
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      // Skip logging for frequent polling endpoints (health checks, status checks)
-      const pathWithoutQuery = path.split('?')[0];
-      const isPollingEndpoint = pathWithoutQuery === "/api/scan/status" || 
-                                 pathWithoutQuery === "/api/health" ||
-                                 pathWithoutQuery === "/api/scanner-stats";
+      // Only log errors (4xx, 5xx status codes)
+      const isError = res.statusCode >= 400;
       
-      // Only log polling endpoints if they take too long or return errors
-      if (isPollingEndpoint && res.statusCode === 200 && duration < 500) {
-        // Skip logging for fast, successful polling requests
-        return;
+      if (!isError) {
+        return; // Skip all successful requests - no console noise
       }
       
+      // Only log errors with minimal information
       let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       
       if (capturedJsonResponse) {
-        // For large responses (arrays or large objects), log a summary instead of full JSON
         const jsonString = JSON.stringify(capturedJsonResponse);
         const jsonSize = jsonString.length;
         
-        // Get path without query parameters for matching
-        const pathWithoutQuery = path.split('?')[0];
-        
-        // Special handling for candidate list endpoint - always summarize (always returns large arrays)
-        const isCandidateList = pathWithoutQuery === "/api/candidates";
-        
-        // Special handling for candidate detail endpoint (single candidate object with potentially long description)
-        const isCandidateDetail = pathWithoutQuery.startsWith("/api/candidates/") && pathWithoutQuery !== "/api/candidates" && !Array.isArray(capturedJsonResponse);
-        
-        // Always summarize candidate lists (they're always large)
-        if (isCandidateList && Array.isArray(capturedJsonResponse)) {
-          logLine += ` :: [${capturedJsonResponse.length} candidates, ${jsonSize} bytes]`;
-        }
-        // If response is large (> 200 chars) or is an array with many items, summarize it
-        else if (Array.isArray(capturedJsonResponse)) {
-          if (capturedJsonResponse.length > 3 || jsonSize > 200) {
-            logLine += ` :: [Array with ${capturedJsonResponse.length} items, ${jsonSize} bytes]`;
-          } else {
-            logLine += ` :: ${jsonString}`;
-          }
-        } else if (isCandidateDetail && jsonSize > 300) {
-          // For candidate detail: summarize if > 300 bytes (description can be long)
-          const keys = Object.keys(capturedJsonResponse);
-          const hasDescription = 'description' in capturedJsonResponse && capturedJsonResponse.description;
-          const descLength = hasDescription ? String(capturedJsonResponse.description).length : 0;
-          logLine += ` :: {Candidate: ${capturedJsonResponse.title?.substring(0, 40) || 'N/A'}..., ${keys.length} fields, ${jsonSize} bytes${descLength > 0 ? `, description: ${descLength} chars` : ''}}`;
-        } else if (jsonSize > 200) {
-          // For large objects, summarize (entities, settings, etc. are usually large nested objects)
-          const keys = Object.keys(capturedJsonResponse);
-          // Check if it's a complex nested object (has nested objects/arrays)
-          const hasNestedStructures = Object.values(capturedJsonResponse).some(
-            val => typeof val === 'object' && val !== null && (Array.isArray(val) || Object.keys(val).length > 3)
-          );
-          
-          if (hasNestedStructures) {
-            // For complex nested objects (like entities with categories, entities, channels), just show summary
-            logLine += ` :: {Object with ${keys.length} keys, ${jsonSize} bytes}`;
-          } else {
-            // Simple objects: still log full JSON if small enough
-            logLine += ` :: ${jsonString}`;
-          }
+        // For errors, show the full response if it's small, otherwise summarize
+        if (jsonSize > 200) {
+          logLine += ` :: {Error response: ${jsonSize} bytes}`;
         } else {
-          // Small responses: log full JSON
           logLine += ` :: ${jsonString}`;
         }
       }
-
+      
       log(logLine);
     }
   });

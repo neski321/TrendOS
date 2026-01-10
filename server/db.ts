@@ -18,9 +18,9 @@ export const pool = new Pool({
   ssl: databaseUrl.includes("neon.tech") ? { rejectUnauthorized: false } : undefined,
 });
 
-// Test connection
+// Silently connect - only log errors
 pool.on("connect", () => {
-  console.log("Connected to NeonDB");
+  // Connection successful - no need to log
 });
 
 pool.on("error", (err) => {
